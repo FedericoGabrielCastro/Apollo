@@ -12,6 +12,7 @@ const EMPTY_FORM: EndpointInput = {
   expected_status: 200,
   is_active: true,
   timeout_seconds: 5,
+  check_interval_minutes: 5,
 }
 
 type EndpointFormProps = {
@@ -29,6 +30,7 @@ function toInput(endpoint: MonitoredEndpoint): EndpointInput {
     expected_status: endpoint.expected_status,
     is_active: endpoint.is_active,
     timeout_seconds: endpoint.timeout_seconds,
+    check_interval_minutes: endpoint.check_interval_minutes,
   }
 }
 
@@ -113,6 +115,22 @@ export function EndpointForm({
             value={form.timeout_seconds}
             onChange={(event) =>
               setForm({ ...form, timeout_seconds: Number(event.target.value) })
+            }
+          />
+        </label>
+        <label>
+          Interval (min)
+          <input
+            required
+            type="number"
+            min={1}
+            max={1440}
+            value={form.check_interval_minutes}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                check_interval_minutes: Number(event.target.value),
+              })
             }
           />
         </label>

@@ -57,6 +57,13 @@
   margin: 0;
 }
 
+.app__endpoints-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
 .app__list {
   list-style: none;
   margin: 0;
@@ -84,12 +91,23 @@
   color: #5a6670;
 }
 
+.app__due {
+  font-weight: 500;
+  color: #8a5a00;
+}
+
 .app__row-url {
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.35rem;
   color: #4a5560;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.85rem;
   word-break: break-all;
+}
+
+.app__row-meta {
+  margin: 0 0 0.5rem;
+  color: #5a6670;
+  font-size: 0.85rem;
 }
 
 .app__row-actions {

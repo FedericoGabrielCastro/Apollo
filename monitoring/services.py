@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from datetime import timedelta
 
 import httpx
+from django.db.models import Max, QuerySet
+from django.utils import timezone
 
 from monitoring.models import HealthCheckResult, MonitoredEndpoint
 
@@ -62,3 +65,48 @@ def run_health_check(endpoint: MonitoredEndpoint) -> HealthCheckResult:
         latency_ms=outcome.latency_ms,
         error_message=outcome.error_message,
     )
+
+
+def is_endpoint_due(
+    endpoint: MonitoredEndpoint,
+    *,
+    last_checked_at=None,
+    now=None,
+) -> bool:
+    """Return True when the endpoint has never been checked or its interval elapsed."""
+    if now is None:
+        now = timezone.now()
+
+    if last_checked_at is None:
+        latest = endpoint.checks.order_by("-checked_at").values_list("checked_at", flat=True).first()
+        last_checked_at = latest
+
+    if last_checked_at is None:
+        return True
+
+    return last_checked_at + timedelta(minutes=endpoint.check_interval_minutes) <= now
+
+
+def due_endpoints(*, include_inactive: bool = False) -> list[MonitoredEndpoint]:
+    """Active endpoints (by default) whose check interval has elapsed."""
+    now = timezone.now()
+    queryset: QuerySet[MonitoredEndpoint] = MonitoredEndpoint.objects.annotate(
+        last_checked_at=Max("checks__checked_at"),
+    )
+    if not include_inactive:
+        queryset = queryset.filter(is_active=True)
+
+    return [
+        endpoint
+        for endpoint in queryset
+        if is_endpoint_due(
+            endpoint,
+            last_checked_at=endpoint.last_checked_at,
+            now=now,
+        )
+    ]
+
+
+def run_due_checks(*, include_inactive: bool = False) -> list[HealthCheckResult]:
+    """Probe every due endpoint and return the created results."""
+    return [run_health_check(endpoint) for endpoint in due_endpoints(include_inactive=include_inactive)]

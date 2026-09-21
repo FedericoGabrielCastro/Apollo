@@ -12,6 +12,7 @@ class MonitoredEndpointAdmin(admin.ModelAdmin):
         "expected_status",
         "is_active",
         "timeout_seconds",
+        "check_interval_minutes",
     )
     list_filter = ("is_active", "method")
     search_fields = ("name", "url")

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import { EndpointForm } from "./components/EndpointForm"
 import { useAppDispatch, useAppSelector } from "./store/hooks"
 import {
+  checkDueEndpoints,
   checkEndpoint,
   createEndpoint,
   deleteEndpoint,
@@ -49,13 +50,15 @@ function App() {
     await dispatch(deleteEndpoint(endpoint.id))
   }
 
+  const dueCount = endpoints.items.filter((item) => item.is_active && item.is_due).length
+
   return (
     <main className="app">
       <header className="app__header">
         <p className="app__brand">Apollo</p>
         <h1>API Health Monitor</h1>
         <p className="app__lede">
-          Add endpoints, probe them, and watch their latest status.
+          Add endpoints, schedule intervals, and probe what is due.
         </p>
       </header>
 
@@ -84,14 +87,28 @@ function App() {
       <section className="app__endpoints">
         <div className="app__endpoints-head">
           <h2>Endpoints</h2>
-          <button
-            type="button"
-            className="app__button"
-            onClick={() => void dispatch(fetchEndpoints())}
-            disabled={endpoints.loading}
-          >
-            Refresh
-          </button>
+          <div className="app__endpoints-actions">
+            <button
+              type="button"
+              className="app__button"
+              onClick={() => void dispatch(checkDueEndpoints())}
+              disabled={endpoints.checkingDue || dueCount === 0}
+            >
+              {endpoints.checkingDue
+                ? "Checking due…"
+                : dueCount > 0
+                  ? `Check due (${dueCount})`
+                  : "Nothing due"}
+            </button>
+            <button
+              type="button"
+              className="app__button"
+              onClick={() => void dispatch(fetchEndpoints())}
+              disabled={endpoints.loading}
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         {endpoints.loading && endpoints.items.length === 0 && <p>Loading…</p>}
@@ -117,9 +134,15 @@ function App() {
                     {!endpoint.is_active && (
                       <span className="app__muted"> · inactive</span>
                     )}
+                    {endpoint.is_active && endpoint.is_due && (
+                      <span className="app__due"> · due</span>
+                    )}
                   </p>
                   <p className="app__row-url">
                     {endpoint.method} {endpoint.url}
+                  </p>
+                  <p className="app__row-meta">
+                    every {endpoint.check_interval_minutes} min
                   </p>
                   <p className={pillClass}>
                     {statusLabel(last?.status)}
