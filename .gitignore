@@ -8,6 +8,7 @@ dist/
 *.sqlite3
 db.sqlite3
 staticfiles/
+data/
 .pytest_cache/
 .coverage
 htmlcov/

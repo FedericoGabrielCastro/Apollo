@@ -4,88 +4,98 @@ Django + React API Health Monitor (monolith).
 
 ## Stack
 
-- **Backend:** Django 6 + Django REST Framework + httpx + Token auth (Poetry)
+- **Backend:** Django 6 + DRF + httpx + Token auth + WhiteNoise + Gunicorn (Poetry)
 - **Frontend:** React + Vite + Redux Toolkit (pnpm)
-- **Data helpers:** Factory Boy + `seed` / `check_endpoints` commands
-- **Alerting:** webhook notifications on failure / recovery transitions
-- **Dashboard:** uptime %, latency, due endpoints, recent failures
+- **Ops:** Docker, docker-compose, GitHub Actions CI, `.env` configuration
+- **Features:** scheduled checks, webhook alerts, uptime dashboard
 
-## Setup
+## Quick start (local)
 
 ```bash
-# Backend
+cp .env.example .env
 poetry install
 poetry run python manage.py migrate
 poetry run python manage.py seed
 
-# Frontend
 pnpm --dir frontend install
 ```
 
-`seed` creates demo user **`apollo` / `apollo`** plus an API token and sample endpoints.
-
-## Development
-
-Run both processes:
+Run API + Vite:
 
 ```bash
-# Terminal 1 — API on :8000
 poetry run python manage.py runserver
-
-# Terminal 2 — Vite on :5173 (proxies /api to Django)
 pnpm --dir frontend dev
 ```
 
-Open http://localhost:5173 and sign in with `apollo` / `apollo`.
+Open http://localhost:5173 and sign in with **`apollo` / `apollo`**.
+
+## Docker
+
+```bash
+cp .env.example .env
+# set DJANGO_SECRET_KEY and DJANGO_DEBUG=false for real deploys
+docker compose up --build
+```
+
+App: http://localhost:8000 (SPA + API in one container)  
+Login: `apollo` / `apollo` (seeded on startup when `APOLLO_SEED_ON_STARTUP=true`)
+
+Useful:
+
+```bash
+docker compose logs -f web
+docker compose down
+```
+
+## Environment
+
+See [`.env.example`](.env.example). Important keys:
+
+| Variable | Purpose |
+|----------|---------|
+| `DJANGO_SECRET_KEY` | Django secret |
+| `DJANGO_DEBUG` | `true` / `false` |
+| `DJANGO_ALLOWED_HOSTS` | Comma-separated hosts |
+| `DJANGO_SQLITE_PATH` | SQLite file path (`/data/db.sqlite3` in Docker) |
+| `CORS_ALLOWED_ORIGINS` | Browser origins allowed to call the API |
+| `APOLLO_DEMO_USERNAME` / `APOLLO_DEMO_PASSWORD` | Seeded demo user |
+| `APOLLO_SEED_ON_STARTUP` | Run `seed` on container boot |
 
 ## Auth
 
-API defaults to **Token authentication** (`Authorization: Token <key>`).
+API uses **Token authentication** (`Authorization: Token <key>`).
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/auth/login/` | Exchange username/password for token |
-| POST | `/api/auth/logout/` | Delete current token |
-| GET | `/api/auth/me/` | Current user |
-| GET | `/api/health/` | Public liveness (no auth) |
+| Method | Path | Auth |
+|--------|------|------|
+| POST | `/api/auth/login/` | public |
+| POST | `/api/auth/logout/` | token |
+| GET | `/api/auth/me/` | token |
+| GET | `/api/health/` | public |
+| GET | `/api/dashboard/` | token |
+| * | `/api/endpoints/…` | token |
 
-All other API routes require authentication.
-
-## Scheduling (cron)
+## Scheduling (cron / host)
 
 ```bash
 * * * * * cd /path/to/Apollo && poetry run python manage.py check_endpoints --due
 ```
 
-## Alerting
+Inside Docker you can add a second service or host cron hitting the same volume/DB.
 
-Alerts fire only on **status transitions** (failure / recovery). Consecutive failures do not re-alert.
+## CI
 
-## Dashboard
+GitHub Actions (`.github/workflows/ci.yml`) runs:
 
-`GET /api/dashboard/?hours=24` returns aggregate uptime, latency, per-endpoint rows, recent failures, and recent alerts.
+1. Poetry + pytest
+2. pnpm build
+3. `docker build`
 
 ## Useful commands
 
 ```bash
-poetry run python manage.py seed
-poetry run python manage.py check_endpoints --due
 poetry run pytest
+poetry run python manage.py check_endpoints --due
 pnpm --dir frontend build
+poetry run python manage.py collectstatic --noinput
+poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8000
 ```
-
-## API (authenticated unless noted)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health/` | Public liveness |
-| GET | `/api/dashboard/` | Uptime / ops dashboard |
-| GET/POST | `/api/endpoints/` | List / create |
-| GET/PUT/PATCH/DELETE | `/api/endpoints/:id/` | Detail |
-| POST | `/api/endpoints/:id/check/` | Run check |
-| POST | `/api/endpoints/check-due/` | Check due endpoints |
-| GET | `/api/endpoints/:id/checks/` | Check history |
-| GET | `/api/endpoints/:id/alerts/` | Alert history |
-| POST | `/api/endpoints/:id/test-webhook/` | Test webhook |
-| GET | `/api/checks/` | All checks |
-| GET | `/api/alerts/` | All alerts |
