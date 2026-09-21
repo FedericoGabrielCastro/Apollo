@@ -4,6 +4,28 @@ from monitoring.factories import MonitoredEndpointFactory
 from monitoring.models import MonitoredEndpoint
 
 
+SEED_ENDPOINTS = [
+    {
+        "name": "Apollo self",
+        "url": "http://127.0.0.1:8000/api/health/",
+        "method": "GET",
+        "expected_status": 200,
+    },
+    {
+        "name": "Example.com",
+        "url": "https://example.com/",
+        "method": "GET",
+        "expected_status": 200,
+    },
+    {
+        "name": "HTTPBin status 200",
+        "url": "https://httpbin.org/status/200",
+        "method": "GET",
+        "expected_status": 200,
+    },
+]
+
+
 class Command(BaseCommand):
     help = "Seed the database with sample monitored endpoints."
 
@@ -11,8 +33,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--count",
             type=int,
-            default=5,
-            help="Number of endpoints to create (default: 5).",
+            default=None,
+            help="Extra random endpoints to create via Factory Boy.",
         )
         parser.add_argument(
             "--flush",
@@ -21,13 +43,26 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options) -> None:
-        count: int = options["count"]
-
         if options["flush"]:
             deleted, _ = MonitoredEndpoint.objects.all().delete()
             self.stdout.write(self.style.WARNING(f"Deleted {deleted} endpoint(s)."))
 
-        endpoints = MonitoredEndpointFactory.create_batch(count)
+        created = []
+        for payload in SEED_ENDPOINTS:
+            endpoint, was_created = MonitoredEndpoint.objects.get_or_create(
+                name=payload["name"],
+                defaults=payload,
+            )
+            if was_created:
+                created.append(endpoint)
+
+        extra = options["count"]
+        if extra:
+            created.extend(MonitoredEndpointFactory.create_batch(extra))
+
         self.stdout.write(
-            self.style.SUCCESS(f"Seeded {len(endpoints)} monitored endpoint(s).")
+            self.style.SUCCESS(
+                f"Seeded {len(created)} new endpoint(s) "
+                f"({MonitoredEndpoint.objects.count()} total)."
+            )
         )
