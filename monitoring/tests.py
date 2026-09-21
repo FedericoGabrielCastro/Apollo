@@ -505,3 +505,12 @@ def test_dashboard_metrics(api_client) -> None:
     assert response.data["summary"]["uptime_percent"] == 50.0
     assert response.data["endpoints"][0]["name"] == "Alpha"
     assert response.data["endpoints"][0]["uptime_percent"] == 50.0
+
+
+@pytest.mark.django_db
+@patch("monitoring.management.commands.run_check_worker.call_command")
+def test_run_check_worker_once(mock_call: MagicMock) -> None:
+    from django.core.management import call_command
+
+    call_command("run_check_worker", once=True, interval=5)
+    mock_call.assert_called_once_with("check_endpoints", due=True)

@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 
+echo "Waiting for database..."
+python /wait_for_db.py
+
 echo "Running migrations..."
 python manage.py migrate --noinput
 
