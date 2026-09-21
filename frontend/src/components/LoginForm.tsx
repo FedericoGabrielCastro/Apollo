@@ -41,8 +41,8 @@ export function LoginForm() {
         <h1>{mode === "login" ? "Sign in" : "Create account"}</h1>
         <p className="app__lede">
           {mode === "login"
-            ? "Use the seeded demo account (`apollo` / `apollo`) or your own user."
-            : "Register a new account to start monitoring endpoints."}
+            ? "Monitor API health, incidents, and uptime from one place."
+            : "Create an account to own and monitor your endpoints."}
         </p>
       </header>
 
