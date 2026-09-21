@@ -1,75 +1,150 @@
-# Apollo
+<p align="center">
+  <img src="docs/apollo-banner.svg" alt="Apollo — API Health Monitor" width="100%" />
+</p>
 
-Django + React API Health Monitor (monolith).
+<p align="center">
+  <strong>Watch your APIs. Catch outages early. Ship with confidence.</strong>
+</p>
 
-## Stack
+<p align="center">
+  <a href="#quick-start"><img src="https://img.shields.io/badge/quick%20start-2%20commands-0F766E?style=for-the-badge" alt="Quick start" /></a>
+  <a href="#features"><img src="https://img.shields.io/badge/features-production%20ready-2D4A6E?style=for-the-badge" alt="Features" /></a>
+  <a href="https://github.com/FedericoGabrielCastro/Apollo/actions"><img src="https://img.shields.io/github/actions/workflow/status/FedericoGabrielCastro/Apollo/ci.yml?branch=main&style=for-the-badge&label=CI" alt="CI" /></a>
+</p>
 
-- **Backend:** Django 6 + DRF + httpx + Token auth + WhiteNoise + Gunicorn
-- **Frontend:** React + Vite + Redux Toolkit + React Router (pnpm)
-- **Data:** SQLite (local) or PostgreSQL (`DATABASE_URL`)
-- **Ops:** Docker Compose (`db` + `web` + `worker`), GitHub Actions CI
-- **Product:** multi-user ownership, advanced assertions, quiet hours, incident ack, charts, exports, Discord/Slack, status page, retention
+<p align="center">
+  <img src="https://img.shields.io/badge/Django-6-092E20?logo=django&logoColor=white" alt="Django" />
+  <img src="https://img.shields.io/badge/React-Vite-149ECA?logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/Redux-Toolkit-764ABC?logo=redux&logoColor=white" alt="Redux" />
+  <img src="https://img.shields.io/badge/Postgres-or%20SQLite-336791?logo=postgresql&logoColor=white" alt="Postgres" />
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/license-see%20repo-lightgrey" alt="License" />
+</p>
 
-## Quick start (local)
+---
+
+## Why Apollo?
+
+Most “health checks” stop at a green ping.  
+**Apollo** is a full monitoring cockpit: scheduled probes, transition alerts, incidents, a public status page, charts, and exports — in one Django + React monolith.
+
+```text
+   probe ──► assert ──► threshold ──► incident
+                │                        │
+                └──► webhook / email / Discord / Slack
+                └──► public /status page
+```
+
+---
+
+## Features
+
+<table>
+  <tr>
+    <td width="50%">
+      <h3>🔭 Probes that mean it</h3>
+      <p>HTTP methods, custom headers, bearer/basic auth, request bodies, SSL expiry, latency caps, body / header / JSON-path assertions.</p>
+    </td>
+    <td width="50%">
+      <h3>🚨 Alerts without noise</h3>
+      <p>Transition-only notifications, failure thresholds, mute windows, quiet hours. Channels: webhook, email, Discord, Slack.</p>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <h3>🩹 Incidents & ownership</h3>
+      <p>Auto open/resolve, acknowledge in UI, multi-user ownership, optional registration, staff sees everything.</p>
+    </td>
+    <td>
+      <h3>📣 Status the world can see</h3>
+      <p>Public <code>/status</code>, branded title/subtitle/support link, tags, and live overall health.</p>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <h3>📈 Ops dashboard</h3>
+      <p>Uptime & latency charts, due checks, CSV export, paginated history, check retention.</p>
+    </td>
+    <td>
+      <h3>🧱 Ship-ready stack</h3>
+      <p>Poetry, pnpm, Docker Compose (<code>db</code> + <code>web</code> + <code>worker</code>), GitHub Actions CI, WhiteNoise + Gunicorn.</p>
+    </td>
+  </tr>
+</table>
+
+---
+
+## Quick start
+
+### Local (dev)
 
 ```bash
 cp .env.example .env
-poetry install
-poetry run python manage.py migrate
-poetry run python manage.py seed
+poetry install && poetry run python manage.py migrate && poetry run python manage.py seed
 pnpm --dir frontend install
 
+# terminal 1
 poetry run python manage.py runserver
+
+# terminal 2
 pnpm --dir frontend dev
 ```
 
-- App: http://localhost:5173 — login **`apollo` / `apollo`** (or register if `APOLLO_ALLOW_REGISTER=true`)
-- Public status: http://localhost:5173/status
+| Surface | URL |
+|--------|-----|
+| **App** | http://localhost:5173 |
+| **Public status** | http://localhost:5173/status |
+| **Demo login** | `apollo` / `apollo` |
 
-## Docker
+### Docker (one shot)
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-- App: http://localhost:8000
-- Status: http://localhost:8000/status
-- Worker runs due checks + `prune_checks` on an interval
+| Surface | URL |
+|--------|-----|
+| **App + API** | http://localhost:8000 |
+| **Status** | http://localhost:8000/status |
 
-## Features
+Worker runs due checks and prunes old results on an interval.
 
-| Area | Details |
-|------|---------|
-| Auth | Login/logout/me + optional register; endpoints scoped by owner (staff sees all) |
-| Endpoints | CRUD, tags, public, probe auth/headers/body, mute, quiet hours |
-| Checks | Manual, due, history; body/header/JSON/latency/SSL assertions; failure threshold |
-| Alerts | Webhook/email/Discord/Slack after N failures; muted by datetime or quiet hours |
-| Incidents | Auto open/resolve; acknowledge via API/UI |
-| Status page | Public `/status` + branding via `/api/status/config/` |
-| Dashboard | Uptime, latency, charts, CSV export |
-| Retention | Worker prunes checks older than `CHECK_RETENTION_DAYS` |
+---
 
-## Key API routes
+## Architecture
+
+```mermaid
+flowchart LR
+  U[Operator UI] --> API[Django / DRF]
+  S[Public /status] --> API
+  API --> DB[(SQLite / Postgres)]
+  W[Check worker] --> API
+  W --> DB
+  API -->|alerts| C[Webhook · Email · Discord · Slack]
+```
+
+**Monolith layout:** React (Vite) talks to `/api/*`; production serves the built frontend via WhiteNoise.
+
+---
+
+## API map
 
 | Method | Path | Auth |
 |--------|------|------|
-| GET | `/api/health/` | public |
-| GET | `/api/status/public/` | public |
-| GET/PATCH | `/api/status/config/` | token |
-| GET | `/api/exports/{checks\|alerts\|incidents}.csv` | token |
-| POST | `/api/auth/login/` | public |
-| POST | `/api/auth/register/` | public (if enabled) |
-| GET | `/api/dashboard/` | token |
-| CRUD | `/api/endpoints/` | token |
-| GET | `/api/incidents/?status=open` | token |
-| POST | `/api/incidents/{id}/acknowledge/` | token |
-| GET/POST | `/api/tags/` | token |
-| GET | `/api/alerts/` | token |
+| `GET` | `/api/health/` | public |
+| `GET` | `/api/status/public/` | public |
+| `GET/PATCH` | `/api/status/config/` | token |
+| `POST` | `/api/auth/login/` · `/api/auth/register/` | public* |
+| `GET` | `/api/dashboard/` | token |
+| `CRUD` | `/api/endpoints/` | token |
+| `GET` | `/api/incidents/?status=open` | token |
+| `POST` | `/api/incidents/{id}/acknowledge/` | token |
+| `GET` | `/api/exports/{checks\|alerts\|incidents}.csv` | token |
 
-## Env highlights
+\* Register only if `APOLLO_ALLOW_REGISTER=true`.
 
-See `.env.example` (`DATABASE_URL`, `CHECK_INTERVAL_SECONDS`, `CHECK_RETENTION_DAYS`, `APOLLO_ALLOW_REGISTER`, `EMAIL_*`, demo user, etc.).
+---
 
 ## Commands
 
@@ -81,3 +156,41 @@ poetry run python manage.py prune_checks --dry-run
 pnpm --dir frontend build
 docker compose up --build
 ```
+
+---
+
+## Configuration
+
+Copy `.env.example` → `.env`. Highlights:
+
+| Variable | Purpose |
+|----------|---------|
+| `DJANGO_SECRET_KEY` | Required when `DJANGO_DEBUG=false` |
+| `DATABASE_URL` | Postgres URL (empty → SQLite) |
+| `CHECK_INTERVAL_SECONDS` | Worker loop |
+| `CHECK_RETENTION_DAYS` | Auto-prune old checks |
+| `APOLLO_ALLOW_REGISTER` | Open self-serve signup |
+| `EMAIL_*` / mailer settings | Email alerts |
+
+---
+
+## Project pulse
+
+```text
+ Apollo
+ ├── monitoring/     models · probes · alerts · incidents · status
+ ├── config/          Django settings & URLs
+ ├── frontend/        React + Redux + Vite UI
+ ├── docker/          entrypoint + worker
+ └── .github/        CI
+```
+
+---
+
+<p align="center">
+  <sub>Built as a Django + React monolith · Designed to stay out of the way until something breaks</sub>
+</p>
+
+<p align="center">
+  <img src="frontend/public/favicon.svg" alt="Apollo mark" width="48" height="48" />
+</p>
