@@ -4,10 +4,11 @@ Django + React API Health Monitor (monolith).
 
 ## Stack
 
-- **Backend:** Django 6 + Django REST Framework + httpx (Poetry)
+- **Backend:** Django 6 + Django REST Framework + httpx + Token auth (Poetry)
 - **Frontend:** React + Vite + Redux Toolkit (pnpm)
 - **Data helpers:** Factory Boy + `seed` / `check_endpoints` commands
 - **Alerting:** webhook notifications on failure / recovery transitions
+- **Dashboard:** uptime %, latency, due endpoints, recent failures
 
 ## Setup
 
@@ -21,6 +22,8 @@ poetry run python manage.py seed
 pnpm --dir frontend install
 ```
 
+`seed` creates demo user **`apollo` / `apollo`** plus an API token and sample endpoints.
+
 ## Development
 
 Run both processes:
@@ -33,68 +36,56 @@ poetry run python manage.py runserver
 pnpm --dir frontend dev
 ```
 
-Open http://localhost:5173 to manage endpoints, run checks, inspect history, and configure webhooks.
+Open http://localhost:5173 and sign in with `apollo` / `apollo`.
+
+## Auth
+
+API defaults to **Token authentication** (`Authorization: Token <key>`).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/auth/login/` | Exchange username/password for token |
+| POST | `/api/auth/logout/` | Delete current token |
+| GET | `/api/auth/me/` | Current user |
+| GET | `/api/health/` | Public liveness (no auth) |
+
+All other API routes require authentication.
 
 ## Scheduling (cron)
 
-Each endpoint has `check_interval_minutes`. Run due probes every minute from cron:
-
 ```bash
-# Every minute — only endpoints whose interval elapsed
 * * * * * cd /path/to/Apollo && poetry run python manage.py check_endpoints --due
 ```
 
-Or trigger the same logic from the UI / API with `POST /api/endpoints/check-due/`.
-
 ## Alerting
 
-Alerts fire only on **status transitions**:
+Alerts fire only on **status transitions** (failure / recovery). Consecutive failures do not re-alert.
 
-- healthy / never-checked → `down` or `error` → **failure** alert
-- `down` / `error` → `up` → **recovery** alert
-- consecutive failures do **not** re-alert
+## Dashboard
 
-Configure per endpoint:
-
-- `webhook_url` — POST JSON payload destination
-- `alert_on_failure` — enable / disable alerting
-
-Useful for local testing: [webhook.site](https://webhook.site) or `POST /api/endpoints/:id/test-webhook/`.
+`GET /api/dashboard/?hours=24` returns aggregate uptime, latency, per-endpoint rows, recent failures, and recent alerts.
 
 ## Useful commands
 
 ```bash
-# Seed curated sample endpoints (optional extra Factory Boy rows)
 poetry run python manage.py seed
-poetry run python manage.py seed --count 5
-
-# Replace existing seed data
-poetry run python manage.py seed --flush
-
-# Probe all active endpoints
-poetry run python manage.py check_endpoints
-
-# Probe only due endpoints (for cron)
 poetry run python manage.py check_endpoints --due
-
-# Backend tests
 poetry run pytest
-
-# Frontend build (for monolith static serving when DEBUG=False)
 pnpm --dir frontend build
 ```
 
-## API
+## API (authenticated unless noted)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/health/` | Apollo liveness |
-| GET/POST | `/api/endpoints/` | List / create monitored endpoints |
-| GET/PUT/PATCH/DELETE | `/api/endpoints/:id/` | Endpoint detail (`last_check`, `last_alert`, `is_due`) |
-| POST | `/api/endpoints/:id/check/` | Run a health check now (may dispatch alerts) |
-| POST | `/api/endpoints/check-due/` | Run checks for all due endpoints |
-| GET | `/api/endpoints/:id/checks/` | Recent checks for one endpoint |
-| GET | `/api/endpoints/:id/alerts/` | Recent alert events for one endpoint |
-| POST | `/api/endpoints/:id/test-webhook/` | Send a test webhook payload |
-| GET | `/api/checks/` | List all check results |
-| GET | `/api/alerts/` | List all alert events |
+| GET | `/api/health/` | Public liveness |
+| GET | `/api/dashboard/` | Uptime / ops dashboard |
+| GET/POST | `/api/endpoints/` | List / create |
+| GET/PUT/PATCH/DELETE | `/api/endpoints/:id/` | Detail |
+| POST | `/api/endpoints/:id/check/` | Run check |
+| POST | `/api/endpoints/check-due/` | Check due endpoints |
+| GET | `/api/endpoints/:id/checks/` | Check history |
+| GET | `/api/endpoints/:id/alerts/` | Alert history |
+| POST | `/api/endpoints/:id/test-webhook/` | Test webhook |
+| GET | `/api/checks/` | All checks |
+| GET | `/api/alerts/` | All alerts |

@@ -1,5 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit"
 
+import { apiFetch, readError } from "../api/client"
+
 export type HealthStatus = {
   status: string
   service: string
@@ -21,9 +23,9 @@ const initialState: HealthState = {
 export const fetchHealth = createAsyncThunk(
   "health/fetch",
   async (): Promise<HealthStatus> => {
-    const response = await fetch("/api/health/")
+    const response = await apiFetch("/api/health/", { auth: false })
     if (!response.ok) {
-      throw new Error(`Health check failed (${response.status})`)
+      throw new Error(await readError(response, "Health check failed"))
     }
     return response.json()
   },

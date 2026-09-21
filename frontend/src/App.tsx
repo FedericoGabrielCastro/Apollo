@@ -2,8 +2,16 @@ import { useEffect, useState } from "react"
 
 import { AlertHistory } from "./components/AlertHistory"
 import { CheckHistory } from "./components/CheckHistory"
+import { DashboardPanel } from "./components/DashboardPanel"
 import { EndpointForm } from "./components/EndpointForm"
+import { LoginForm } from "./components/LoginForm"
 import { useAppDispatch, useAppSelector } from "./store/hooks"
+import {
+  bootstrapAuth,
+  forceLogout,
+  logout,
+} from "./store/authSlice"
+import { fetchDashboard } from "./store/dashboardSlice"
 import {
   checkDueEndpoints,
   checkEndpoint,
@@ -25,10 +33,12 @@ function statusLabel(status: string | undefined) {
   return status
 }
 
-function App() {
+function AuthenticatedApp() {
   const dispatch = useAppDispatch()
+  const auth = useAppSelector((state) => state.auth)
   const health = useAppSelector((state) => state.health)
   const endpoints = useAppSelector((state) => state.endpoints)
+  const dashboard = useAppSelector((state) => state.dashboard)
   const [editing, setEditing] = useState<MonitoredEndpoint | null>(null)
   const [historyOpenId, setHistoryOpenId] = useState<number | null>(null)
   const [alertsOpenId, setAlertsOpenId] = useState<number | null>(null)
@@ -36,16 +46,19 @@ function App() {
   useEffect(() => {
     void dispatch(fetchHealth())
     void dispatch(fetchEndpoints())
-  }, [dispatch])
+    void dispatch(fetchDashboard(dashboard.hours))
+  }, [dispatch, dashboard.hours])
 
   async function handleCreate(payload: EndpointInput) {
     await dispatch(createEndpoint(payload)).unwrap()
+    void dispatch(fetchDashboard(dashboard.hours))
   }
 
   async function handleUpdate(payload: EndpointInput) {
     if (!editing) return
     await dispatch(updateEndpoint({ id: editing.id, payload })).unwrap()
     setEditing(null)
+    void dispatch(fetchDashboard(dashboard.hours))
   }
 
   async function handleDelete(endpoint: MonitoredEndpoint) {
@@ -61,11 +74,13 @@ function App() {
       setAlertsOpenId(null)
     }
     await dispatch(deleteEndpoint(endpoint.id))
+    void dispatch(fetchDashboard(dashboard.hours))
   }
 
   async function handleCheck(endpointId: number) {
     await dispatch(checkEndpoint(endpointId)).unwrap()
     await dispatch(fetchEndpoints())
+    void dispatch(fetchDashboard(dashboard.hours))
     if (alertsOpenId === endpointId) {
       void dispatch(fetchEndpointAlerts(endpointId))
     }
@@ -94,10 +109,22 @@ function App() {
   return (
     <main className="app">
       <header className="app__header">
-        <p className="app__brand">Apollo</p>
+        <div className="app__header-top">
+          <p className="app__brand">Apollo</p>
+          <div className="app__user">
+            <span>{auth.user?.username}</span>
+            <button
+              type="button"
+              className="app__button"
+              onClick={() => void dispatch(logout())}
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
         <h1>API Health Monitor</h1>
         <p className="app__lede">
-          Probe endpoints on a schedule and webhook on failure or recovery.
+          Authenticated monitoring with uptime metrics, schedules, and webhooks.
         </p>
       </header>
 
@@ -111,6 +138,8 @@ function App() {
           </p>
         )}
       </section>
+
+      <DashboardPanel />
 
       <section className="app__form-section">
         <h2>{editing ? `Edit ${editing.name}` : "Add endpoint"}</h2>
@@ -301,6 +330,41 @@ function App() {
       </section>
     </main>
   )
+}
+
+function App() {
+  const dispatch = useAppDispatch()
+  const auth = useAppSelector((state) => state.auth)
+
+  useEffect(() => {
+    void dispatch(bootstrapAuth())
+  }, [dispatch])
+
+  useEffect(() => {
+    function onUnauthorized() {
+      dispatch(forceLogout())
+    }
+    window.addEventListener("apollo:unauthorized", onUnauthorized)
+    return () => window.removeEventListener("apollo:unauthorized", onUnauthorized)
+  }, [dispatch])
+
+  if (auth.bootstrapping) {
+    return (
+      <main className="app">
+        <p>Restoring session…</p>
+      </main>
+    )
+  }
+
+  if (!auth.token || !auth.user) {
+    return (
+      <main className="app">
+        <LoginForm />
+      </main>
+    )
+  }
+
+  return <AuthenticatedApp />
 }
 
 export default App

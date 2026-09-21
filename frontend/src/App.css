@@ -8,6 +8,21 @@
   margin-bottom: 2.5rem;
 }
 
+.app__header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.app__user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #4a5560;
+  font-size: 0.95rem;
+}
+
 .app__brand {
   margin: 0 0 0.75rem;
   font-family: "IBM Plex Serif", Georgia, serif;
@@ -285,6 +300,129 @@
   gap: 0.5rem;
 }
 
+.login {
+  max-width: 24rem;
+}
+
+.login__header {
+  margin-bottom: 1.75rem;
+}
+
+.login__form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.login__form label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: #4a5560;
+}
+
+.login__form input {
+  border: 1px solid rgba(26, 31, 36, 0.2);
+  background: rgba(255, 255, 255, 0.55);
+  color: #1a1f24;
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+}
+
+.dashboard {
+  margin-bottom: 2.25rem;
+}
+
+.dashboard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.dashboard__head h2,
+.dashboard h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #5a6670;
+}
+
+.dashboard__head h2 {
+  margin: 0;
+}
+
+.dashboard__controls {
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.dashboard__controls label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: #5a6670;
+}
+
+.dashboard__controls select {
+  border: 1px solid rgba(26, 31, 36, 0.2);
+  background: rgba(255, 255, 255, 0.55);
+  padding: 0.4rem 0.55rem;
+  font: inherit;
+}
+
+.dashboard__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.dashboard__label {
+  margin: 0 0 0.2rem;
+  color: #5a6670;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dashboard__value {
+  margin: 0;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 1.15rem;
+}
+
+.dashboard__tables {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1.25rem;
+}
+
+.dashboard__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.dashboard__table th,
+.dashboard__table td {
+  text-align: left;
+  padding: 0.45rem 0.35rem;
+  border-bottom: 1px solid rgba(26, 31, 36, 0.1);
+}
+
+.dashboard__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+  font-size: 0.9rem;
+}
+
 @media (max-width: 640px) {
   .app__row {
     flex-direction: column;
@@ -300,5 +438,14 @@
 
   .endpoint-form__grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard__stats,
+  .dashboard__tables {
+    grid-template-columns: 1fr;
+  }
+
+  .app__header-top {
+    flex-direction: column;
   }
 }
