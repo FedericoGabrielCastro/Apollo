@@ -1,10 +1,12 @@
 import { configureStore } from "@reduxjs/toolkit"
 
+import endpointsReducer from "./endpointsSlice"
 import healthReducer from "./healthSlice"
 
 export const store = configureStore({
   reducer: {
     health: healthReducer,
+    endpoints: endpointsReducer,
   },
 })
 
