@@ -1,4 +1,4 @@
-import { createAsyncThunk, createSlice } from "@reduxjs/toolkit"
+import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit"
 
 export type HealthCheckResult = {
   id: number
@@ -35,6 +35,12 @@ export type EndpointInput = {
   check_interval_minutes: number
 }
 
+type HistoryEntry = {
+  items: HealthCheckResult[]
+  loading: boolean
+  error: string | null
+}
+
 type EndpointsState = {
   items: MonitoredEndpoint[]
   loading: boolean
@@ -42,6 +48,7 @@ type EndpointsState = {
   checkingDue: boolean
   checkingId: number | null
   deletingId: number | null
+  historyById: Record<number, HistoryEntry>
   error: string | null
 }
 
@@ -52,6 +59,7 @@ const initialState: EndpointsState = {
   checkingDue: false,
   checkingId: null,
   deletingId: null,
+  historyById: {},
   error: null,
 }
 
@@ -155,12 +163,37 @@ export const checkDueEndpoints = createAsyncThunk(
   },
 )
 
+export const fetchEndpointHistory = createAsyncThunk(
+  "endpoints/fetchHistory",
+  async (endpointId: number): Promise<{ endpointId: number; items: HealthCheckResult[] }> => {
+    const response = await fetch(`/api/endpoints/${endpointId}/checks/`)
+    if (!response.ok) {
+      throw new Error(await readError(response, "Failed to load history"))
+    }
+    const items: HealthCheckResult[] = await response.json()
+    return { endpointId, items }
+  },
+)
+
+function prependHistory(
+  state: EndpointsState,
+  endpointId: number,
+  result: HealthCheckResult,
+) {
+  const history = state.historyById[endpointId]
+  if (!history) return
+  history.items = [result, ...history.items.filter((item) => item.id !== result.id)]
+}
+
 const endpointsSlice = createSlice({
   name: "endpoints",
   initialState,
   reducers: {
     clearEndpointsError(state) {
       state.error = null
+    },
+    clearEndpointHistory(state, action: PayloadAction<number>) {
+      delete state.historyById[action.payload]
     },
   },
   extraReducers: (builder) => {
@@ -213,6 +246,7 @@ const endpointsSlice = createSlice({
       .addCase(deleteEndpoint.fulfilled, (state, action) => {
         state.deletingId = null
         state.items = state.items.filter((item) => item.id !== action.payload)
+        delete state.historyById[action.payload]
       })
       .addCase(deleteEndpoint.rejected, (state, action) => {
         state.deletingId = null
@@ -229,6 +263,7 @@ const endpointsSlice = createSlice({
           item.last_check = action.payload.result
           item.is_due = false
         }
+        prependHistory(state, action.payload.endpointId, action.payload.result)
       })
       .addCase(checkEndpoint.rejected, (state, action) => {
         state.checkingId = null
@@ -246,14 +281,38 @@ const endpointsSlice = createSlice({
             item.last_check = result
             item.is_due = false
           }
+          prependHistory(state, result.endpoint, result)
         }
       })
       .addCase(checkDueEndpoints.rejected, (state, action) => {
         state.checkingDue = false
         state.error = action.error.message ?? "Unknown error"
       })
+      .addCase(fetchEndpointHistory.pending, (state, action) => {
+        const endpointId = action.meta.arg
+        state.historyById[endpointId] = {
+          items: state.historyById[endpointId]?.items ?? [],
+          loading: true,
+          error: null,
+        }
+      })
+      .addCase(fetchEndpointHistory.fulfilled, (state, action) => {
+        state.historyById[action.payload.endpointId] = {
+          items: action.payload.items,
+          loading: false,
+          error: null,
+        }
+      })
+      .addCase(fetchEndpointHistory.rejected, (state, action) => {
+        const endpointId = action.meta.arg
+        state.historyById[endpointId] = {
+          items: state.historyById[endpointId]?.items ?? [],
+          loading: false,
+          error: action.error.message ?? "Unknown error",
+        }
+      })
   },
 })
 
-export const { clearEndpointsError } = endpointsSlice.actions
+export const { clearEndpointsError, clearEndpointHistory } = endpointsSlice.actions
 export default endpointsSlice.reducer

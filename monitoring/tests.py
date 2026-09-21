@@ -259,3 +259,28 @@ def test_check_endpoints_due_skips_fresh(mock_probe: MagicMock) -> None:
 
     assert HealthCheckResult.objects.filter(endpoint=due).count() == 1
     assert HealthCheckResult.objects.filter(endpoint=fresh).count() == 1
+
+
+@pytest.mark.django_db
+def test_list_endpoint_checks() -> None:
+    endpoint = MonitoredEndpointFactory()
+    older = HealthCheckResultFactory(
+        endpoint=endpoint,
+        status=HealthCheckResult.Status.DOWN,
+        status_code=500,
+    )
+    newer = HealthCheckResultFactory(
+        endpoint=endpoint,
+        status=HealthCheckResult.Status.UP,
+        status_code=200,
+    )
+    other = MonitoredEndpointFactory()
+    HealthCheckResultFactory(endpoint=other)
+
+    client = APIClient()
+    response = client.get(f"/api/endpoints/{endpoint.id}/checks/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 2
+    assert response.data[0]["id"] == newer.id
+    assert response.data[1]["id"] == older.id
