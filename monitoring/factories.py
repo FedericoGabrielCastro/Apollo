@@ -43,6 +43,13 @@ class MonitoredEndpointFactory(factory.django.DjangoModelFactory):
     failure_threshold = 1
     discord_webhook_url = ""
     slack_webhook_url = ""
+    request_body = ""
+    expect_header_name = ""
+    expect_header_value = ""
+    expect_json_path = ""
+    expect_json_value = ""
+    quiet_hours_start = None
+    quiet_hours_end = None
 
 
 class HealthCheckResultFactory(factory.django.DjangoModelFactory):

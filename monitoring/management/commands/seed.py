@@ -74,10 +74,13 @@ class Command(BaseCommand):
         for payload in SEED_ENDPOINTS:
             endpoint, was_created = MonitoredEndpoint.objects.get_or_create(
                 name=payload["name"],
-                defaults=payload,
+                defaults={**payload, "owner": user},
             )
             if was_created:
                 created_endpoints.append(endpoint)
+            elif endpoint.owner_id is None:
+                endpoint.owner = user
+                endpoint.save(update_fields=["owner"])
 
         extra = options["count"]
         if extra:

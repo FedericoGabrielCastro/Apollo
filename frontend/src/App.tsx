@@ -28,7 +28,7 @@ import {
   type MonitoredEndpoint,
 } from "./store/endpointsSlice"
 import { fetchHealth } from "./store/healthSlice"
-import { fetchIncidents } from "./store/incidentsSlice"
+import { acknowledgeIncident, fetchIncidents } from "./store/incidentsSlice"
 import "./App.css"
 
 function statusLabel(status: string | undefined) {
@@ -42,6 +42,7 @@ function AuthenticatedApp() {
   const health = useAppSelector((state) => state.health)
   const endpoints = useAppSelector((state) => state.endpoints)
   const dashboard = useAppSelector((state) => state.dashboard)
+  const incidents = useAppSelector((state) => state.incidents)
   const [editing, setEditing] = useState<MonitoredEndpoint | null>(null)
   const [historyOpenId, setHistoryOpenId] = useState<number | null>(null)
   const [alertsOpenId, setAlertsOpenId] = useState<number | null>(null)
@@ -119,6 +120,13 @@ function AuthenticatedApp() {
 
   function handleAlertsPageChange(endpointId: number, page: number) {
     void dispatch(fetchEndpointAlerts({ endpointId, page }))
+  }
+
+  async function handleAcknowledge(incidentId: number) {
+    await dispatch(acknowledgeIncident(incidentId)).unwrap()
+    void dispatch(fetchDashboard(dashboard.hours))
+    void dispatch(fetchIncidents("open"))
+    void dispatch(fetchEndpoints())
   }
 
   const dueCount = endpoints.items.filter((item) => item.is_active && item.is_due).length
@@ -227,8 +235,16 @@ function AuthenticatedApp() {
                   <div>
                     <p className="app__row-name">
                       {endpoint.name}
+                      {endpoint.owner_username && (
+                        <span className="app__muted"> · {endpoint.owner_username}</span>
+                      )}
                       {endpoint.open_incident && (
-                        <span className="app__badge app__badge--incident">incident</span>
+                        <>
+                          <span className="app__badge app__badge--incident">incident</span>
+                          {endpoint.open_incident.acknowledged_at && (
+                            <span className="app__badge app__badge--ack">acknowledged</span>
+                          )}
+                        </>
                       )}
                       {!endpoint.is_active && (
                         <span className="app__muted"> · inactive</span>
@@ -294,6 +310,18 @@ function AuthenticatedApp() {
                       {last?.latency_ms != null ? ` · ${last.latency_ms}ms` : ""}
                       {last?.status_code != null ? ` · HTTP ${last.status_code}` : ""}
                     </p>
+                    {endpoint.open_incident && !endpoint.open_incident.acknowledged_at && (
+                      <button
+                        type="button"
+                        className="app__button app__button--ack"
+                        disabled={incidents.acknowledgingId === endpoint.open_incident.id}
+                        onClick={() => void handleAcknowledge(endpoint.open_incident!.id)}
+                      >
+                        {incidents.acknowledgingId === endpoint.open_incident.id
+                          ? "Acknowledging…"
+                          : "Acknowledge incident"}
+                      </button>
+                    )}
                   </div>
                   <div className="app__row-actions">
                     <button

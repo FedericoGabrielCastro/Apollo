@@ -10,17 +10,22 @@ export type Incident = {
   summary: string
   opened_at: string
   resolved_at: string | null
+  acknowledged_at: string | null
+  acknowledged_by: number | null
+  acknowledged_by_username: string | null
 }
 
 type IncidentsState = {
   items: Incident[]
   loading: boolean
+  acknowledgingId: number | null
   error: string | null
 }
 
 const initialState: IncidentsState = {
   items: [],
   loading: false,
+  acknowledgingId: null,
   error: null,
 }
 
@@ -31,6 +36,19 @@ export const fetchIncidents = createAsyncThunk(
     const response = await apiFetch(`/api/incidents/${query}`)
     if (!response.ok) {
       throw new Error(await readError(response, "Failed to load incidents"))
+    }
+    return response.json()
+  },
+)
+
+export const acknowledgeIncident = createAsyncThunk(
+  "incidents/acknowledge",
+  async (incidentId: number): Promise<Incident> => {
+    const response = await apiFetch(`/api/incidents/${incidentId}/acknowledge/`, {
+      method: "POST",
+    })
+    if (!response.ok) {
+      throw new Error(await readError(response, "Failed to acknowledge incident"))
     }
     return response.json()
   },
@@ -52,6 +70,21 @@ const incidentsSlice = createSlice({
       })
       .addCase(fetchIncidents.rejected, (state, action) => {
         state.loading = false
+        state.error = action.error.message ?? "Unknown error"
+      })
+      .addCase(acknowledgeIncident.pending, (state, action) => {
+        state.acknowledgingId = action.meta.arg
+        state.error = null
+      })
+      .addCase(acknowledgeIncident.fulfilled, (state, action) => {
+        state.acknowledgingId = null
+        const index = state.items.findIndex((item) => item.id === action.payload.id)
+        if (index >= 0) {
+          state.items[index] = action.payload
+        }
+      })
+      .addCase(acknowledgeIncident.rejected, (state, action) => {
+        state.acknowledgingId = null
         state.error = action.error.message ?? "Unknown error"
       })
   },

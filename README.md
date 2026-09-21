@@ -8,7 +8,7 @@ Django + React API Health Monitor (monolith).
 - **Frontend:** React + Vite + Redux Toolkit + React Router (pnpm)
 - **Data:** SQLite (local) or PostgreSQL (`DATABASE_URL`)
 - **Ops:** Docker Compose (`db` + `web` + `worker`), GitHub Actions CI
-- **Product:** due checks, assertions, SSL, mute, probe auth, thresholds, Discord/Slack, status branding, charts, CSV export, retention, incidents, tags, dashboard
+- **Product:** multi-user ownership, advanced assertions, quiet hours, incident ack, charts, exports, Discord/Slack, status page, retention
 
 ## Quick start (local)
 
@@ -23,7 +23,7 @@ poetry run python manage.py runserver
 pnpm --dir frontend dev
 ```
 
-- App: http://localhost:5173 — login **`apollo` / `apollo`**
+- App: http://localhost:5173 — login **`apollo` / `apollo`** (or register if `APOLLO_ALLOW_REGISTER=true`)
 - Public status: http://localhost:5173/status
 
 ## Docker
@@ -35,20 +35,20 @@ docker compose up --build
 
 - App: http://localhost:8000
 - Status: http://localhost:8000/status
-- Worker runs `check_endpoints --due` on an interval
+- Worker runs due checks + `prune_checks` on an interval
 
 ## Features
 
 | Area | Details |
 |------|---------|
-| Auth | Token login/logout/me; API protected except health + public status |
-| Endpoints | CRUD, tags, public, interval, webhook/email/Discord/Slack, mute, probe auth/headers |
-| Checks | Manual, due, history; body/latency assertions; SSL expiry; failure threshold |
-| Alerts | Transition after N failures; muted while `mute_alerts_until` is future |
-| Incidents | Auto-open after threshold, auto-resolve on recovery |
+| Auth | Login/logout/me + optional register; endpoints scoped by owner (staff sees all) |
+| Endpoints | CRUD, tags, public, probe auth/headers/body, mute, quiet hours |
+| Checks | Manual, due, history; body/header/JSON/latency/SSL assertions; failure threshold |
+| Alerts | Webhook/email/Discord/Slack after N failures; muted by datetime or quiet hours |
+| Incidents | Auto open/resolve; acknowledge via API/UI |
 | Status page | Public `/status` + branding via `/api/status/config/` |
-| Dashboard | Uptime, latency, due, open incidents, hourly charts, CSV export |
-| Retention | `prune_checks` / worker deletes checks older than `CHECK_RETENTION_DAYS` |
+| Dashboard | Uptime, latency, charts, CSV export |
+| Retention | Worker prunes checks older than `CHECK_RETENTION_DAYS` |
 
 ## Key API routes
 
@@ -59,15 +59,17 @@ docker compose up --build
 | GET/PATCH | `/api/status/config/` | token |
 | GET | `/api/exports/{checks\|alerts\|incidents}.csv` | token |
 | POST | `/api/auth/login/` | public |
+| POST | `/api/auth/register/` | public (if enabled) |
 | GET | `/api/dashboard/` | token |
 | CRUD | `/api/endpoints/` | token |
 | GET | `/api/incidents/?status=open` | token |
+| POST | `/api/incidents/{id}/acknowledge/` | token |
 | GET/POST | `/api/tags/` | token |
 | GET | `/api/alerts/` | token |
 
 ## Env highlights
 
-See `.env.example` for full list (`DATABASE_URL`, `CHECK_INTERVAL_SECONDS`, `EMAIL_*` / mailer settings, demo user, etc.).
+See `.env.example` (`DATABASE_URL`, `CHECK_INTERVAL_SECONDS`, `CHECK_RETENTION_DAYS`, `APOLLO_ALLOW_REGISTER`, `EMAIL_*`, demo user, etc.).
 
 ## Commands
 

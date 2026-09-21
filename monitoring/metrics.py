@@ -9,7 +9,12 @@ from django.utils import timezone
 from monitoring.models import HealthCheckResult
 
 
-def build_check_series(*, hours: int = 24, endpoint_id: int | None = None) -> list[dict[str, Any]]:
+def build_check_series(
+    *,
+    hours: int = 24,
+    endpoint_id: int | None = None,
+    endpoint_ids: list[int] | None = None,
+) -> list[dict[str, Any]]:
     """
     Build hourly uptime/latency buckets for charts.
 
@@ -22,6 +27,8 @@ def build_check_series(*, hours: int = 24, endpoint_id: int | None = None) -> li
     queryset = HealthCheckResult.objects.filter(checked_at__gte=start)
     if endpoint_id is not None:
         queryset = queryset.filter(endpoint_id=endpoint_id)
+    elif endpoint_ids is not None:
+        queryset = queryset.filter(endpoint_id__in=endpoint_ids)
 
     # Prefetch into memory for sqlite-friendly bucketing.
     rows = list(queryset.values("checked_at", "status", "latency_ms"))

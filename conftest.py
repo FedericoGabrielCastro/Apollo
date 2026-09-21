@@ -3,10 +3,13 @@ from django.contrib.auth.models import User
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
+# Fixed test credential — not a real account secret.
+TEST_PASSWORD = "pytest-only-pass"
+
 
 @pytest.fixture
 def user(db) -> User:
-    account = User.objects.create_user(username="tester", password="secret123")
+    account = User.objects.create_user(username="tester", password=TEST_PASSWORD)
     Token.objects.create(user=account)
     return account
 

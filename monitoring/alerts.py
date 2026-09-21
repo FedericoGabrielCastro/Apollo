@@ -208,12 +208,29 @@ def sync_incident_for_transition(
 
 
 def alerts_are_muted(endpoint: MonitoredEndpoint, *, now=None) -> bool:
-    """True when mute_alerts_until is set and still in the future."""
-    if endpoint.mute_alerts_until is None:
+    """True when mute_alerts_until is future or current time is in quiet hours."""
+    if now is None:
+        now = timezone.now()
+    if endpoint.mute_alerts_until is not None and endpoint.mute_alerts_until > now:
+        return True
+    return in_quiet_hours(endpoint, now=now)
+
+
+def in_quiet_hours(endpoint: MonitoredEndpoint, *, now=None) -> bool:
+    """Return True when local time is inside the endpoint quiet-hours window."""
+    start = endpoint.quiet_hours_start
+    end = endpoint.quiet_hours_end
+    if start is None or end is None:
         return False
     if now is None:
         now = timezone.now()
-    return endpoint.mute_alerts_until > now
+    local_time = timezone.localtime(now).time()
+    if start == end:
+        return True
+    if start < end:
+        return start <= local_time < end
+    # Overnight window, e.g. 22:00 -> 06:00
+    return local_time >= start or local_time < end
 
 
 def _record_channel(

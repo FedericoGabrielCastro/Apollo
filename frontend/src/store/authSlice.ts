@@ -57,6 +57,23 @@ export const login = createAsyncThunk(
   },
 )
 
+export const register = createAsyncThunk(
+  "auth/register",
+  async (payload: { username: string; password: string; email?: string }) => {
+    const response = await apiFetch("/api/auth/register/", {
+      method: "POST",
+      auth: false,
+      json: payload,
+    })
+    if (!response.ok) {
+      throw new Error(await readError(response, "Registration failed"))
+    }
+    const data: { token: string; user: AuthUser } = await response.json()
+    setStoredToken(data.token)
+    return data
+  },
+)
+
 export const logout = createAsyncThunk("auth/logout", async () => {
   const response = await apiFetch("/api/auth/logout/", { method: "POST" })
   setStoredToken(null)
@@ -111,6 +128,19 @@ const authSlice = createSlice({
       .addCase(login.rejected, (state, action) => {
         state.loading = false
         state.error = action.error.message ?? "Login failed"
+      })
+      .addCase(register.pending, (state) => {
+        state.loading = true
+        state.error = null
+      })
+      .addCase(register.fulfilled, (state, action) => {
+        state.loading = false
+        state.token = action.payload.token
+        state.user = action.payload.user
+      })
+      .addCase(register.rejected, (state, action) => {
+        state.loading = false
+        state.error = action.error.message ?? "Registration failed"
       })
       .addCase(logout.fulfilled, (state) => {
         state.token = null

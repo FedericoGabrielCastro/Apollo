@@ -8,17 +8,22 @@ from django.utils import timezone
 
 from monitoring.metrics import build_check_series
 from monitoring.models import AlertEvent, HealthCheckResult, Incident, MonitoredEndpoint
+from monitoring.ownership import filter_endpoints_for_user
 from monitoring.services import due_endpoints
 
 
-def build_dashboard(*, hours: int = 24) -> dict[str, Any]:
+def build_dashboard(*, hours: int = 24, user=None) -> dict[str, Any]:
     """Aggregate uptime and operational metrics for the dashboard."""
     hours = max(1, min(hours, 24 * 30))
     since = timezone.now() - timedelta(hours=hours)
 
-    endpoints = list(MonitoredEndpoint.objects.all())
+    endpoint_qs = MonitoredEndpoint.objects.all()
+    if user is not None:
+        endpoint_qs = filter_endpoints_for_user(endpoint_qs, user)
+    endpoints = list(endpoint_qs)
+    endpoint_ids = [endpoint.id for endpoint in endpoints]
     active_endpoints = [endpoint for endpoint in endpoints if endpoint.is_active]
-    due = due_endpoints()
+    due = [endpoint for endpoint in due_endpoints() if endpoint.id in set(endpoint_ids)]
     alerting = [
         endpoint
         for endpoint in endpoints
@@ -30,9 +35,15 @@ def build_dashboard(*, hours: int = 24) -> dict[str, Any]:
             or endpoint.slack_webhook_url
         )
     ]
-    open_incidents = Incident.objects.filter(status=Incident.Status.OPEN).count()
+    open_incidents = Incident.objects.filter(
+        status=Incident.Status.OPEN,
+        endpoint_id__in=endpoint_ids,
+    ).count()
 
-    checks = HealthCheckResult.objects.filter(checked_at__gte=since)
+    checks = HealthCheckResult.objects.filter(
+        checked_at__gte=since,
+        endpoint_id__in=endpoint_ids,
+    )
     check_stats = checks.aggregate(
         total=Count("id"),
         up=Count("id", filter=Q(status=HealthCheckResult.Status.UP)),
@@ -44,7 +55,10 @@ def build_dashboard(*, hours: int = 24) -> dict[str, Any]:
     up_checks = check_stats["up"] or 0
     uptime_percent = round((up_checks / total_checks) * 100, 2) if total_checks else None
 
-    alerts = AlertEvent.objects.filter(created_at__gte=since)
+    alerts = AlertEvent.objects.filter(
+        created_at__gte=since,
+        endpoint_id__in=endpoint_ids,
+    )
     alert_stats = alerts.aggregate(
         total=Count("id"),
         failed=Count("id", filter=Q(success=False)),
@@ -158,10 +172,16 @@ def build_dashboard(*, hours: int = 24) -> dict[str, Any]:
                 "endpoint_name": item.endpoint.name,
                 "summary": item.summary,
                 "opened_at": item.opened_at.isoformat(),
+                "acknowledged_at": (
+                    item.acknowledged_at.isoformat() if item.acknowledged_at else None
+                ),
             }
-            for item in Incident.objects.filter(status=Incident.Status.OPEN)
+            for item in Incident.objects.filter(
+                status=Incident.Status.OPEN,
+                endpoint_id__in=endpoint_ids,
+            )
             .select_related("endpoint")
             .order_by("-opened_at")[:10]
         ],
-        "series": build_check_series(hours=hours),
+        "series": build_check_series(hours=hours, endpoint_ids=endpoint_ids),
     }

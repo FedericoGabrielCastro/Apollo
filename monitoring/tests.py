@@ -9,6 +9,9 @@ from monitoring.factories import HealthCheckResultFactory, MonitoredEndpointFact
 from monitoring.models import HealthCheckResult, MonitoredEndpoint
 from monitoring.services import CheckOutcome, run_health_check
 
+# Fixed test credential — not a real account secret.
+TEST_PASSWORD = "pytest-only-pass"
+
 
 @pytest.mark.django_db
 def test_health_endpoint() -> None:
@@ -481,7 +484,7 @@ def test_endpoints_require_auth(anon_client) -> None:
 def test_login_and_me(anon_client, user) -> None:
     response = anon_client.post(
         "/api/auth/login/",
-        {"username": "tester", "password": "secret123"},
+        {"username": "tester", "password": TEST_PASSWORD},
         format="json",
     )
     assert response.status_code == status.HTTP_200_OK
@@ -800,7 +803,7 @@ def test_discord_alert_channel(
     from monitoring.services import CheckOutcome, run_health_check
 
     endpoint = MonitoredEndpointFactory(
-        discord_webhook_url="https://discord.com/api/webhooks/1/abc",
+        discord_webhook_url="https://example.com/hooks/discord",
     )
     mock_probe.return_value = CheckOutcome(
         status=HealthCheckResult.Status.DOWN,
@@ -934,3 +937,112 @@ def test_checks_pagination(api_client) -> None:
     assert response.data["page_size"] == 2
     assert len(response.data["results"]) == 2
     assert response.data["total_pages"] == 3
+
+
+@pytest.mark.django_db
+def test_register_and_own_endpoints(anon_client, settings) -> None:
+    settings.APOLLO_ALLOW_REGISTER = True
+    response = anon_client.post(
+        "/api/auth/register/",
+        {"username": "newbie", "password": TEST_PASSWORD, "email": "n@example.com"},
+        format="json",
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+    token = response.data["token"]
+
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+    created = client.post(
+        "/api/endpoints/",
+        {
+            "name": "Mine",
+            "url": "https://example.com/mine",
+            "method": "GET",
+            "expected_status": 200,
+        },
+        format="json",
+    )
+    assert created.status_code == status.HTTP_201_CREATED
+    assert created.data["owner_username"] == "newbie"
+
+    other = MonitoredEndpointFactory(name="Someone else", owner=None)
+    # Unowned still visible; owned-by-other should hide for non-staff after we assign owner
+    from django.contrib.auth.models import User
+
+    stranger = User.objects.create_user(username="stranger", password=TEST_PASSWORD)
+    other.owner = stranger
+    other.save(update_fields=["owner"])
+
+    listing = client.get("/api/endpoints/")
+    names = {row["name"] for row in listing.data}
+    assert "Mine" in names
+    assert "Someone else" not in names
+
+
+@pytest.mark.django_db
+@patch("monitoring.services.check_ssl_certificate", return_value=None)
+@patch("httpx.Client")
+def test_json_path_and_header_assertions(mock_client_cls: MagicMock, _ssl: MagicMock) -> None:
+    from monitoring.services import probe_endpoint
+
+    endpoint = MonitoredEndpointFactory(
+        expect_json_path="status",
+        expect_json_value="ok",
+        expect_header_name="X-Health",
+        expect_header_value="green",
+    )
+    response = MagicMock()
+    response.status_code = 200
+    response.text = '{"status":"ok"}'
+    response.headers = {"X-Health": "green"}
+    mock_client_cls.return_value.__enter__.return_value.request.return_value = response
+
+    outcome = probe_endpoint(endpoint)
+    assert outcome.status == HealthCheckResult.Status.UP
+
+    response.text = '{"status":"bad"}'
+    outcome = probe_endpoint(endpoint)
+    assert outcome.status == HealthCheckResult.Status.DOWN
+    assert "JSON path" in outcome.error_message
+
+
+@pytest.mark.django_db
+@patch("monitoring.alerts.deliver_webhook")
+@patch("monitoring.services.probe_endpoint")
+def test_quiet_hours_mute_alerts(mock_probe: MagicMock, mock_deliver: MagicMock) -> None:
+    from datetime import time
+
+    from monitoring.models import AlertEvent, Incident
+    from monitoring.services import CheckOutcome, run_health_check
+
+    endpoint = MonitoredEndpointFactory(
+        webhook_url="https://hooks.example.com/apollo",
+        quiet_hours_start=time(0, 0),
+        quiet_hours_end=time(23, 59, 59),
+    )
+    mock_probe.return_value = CheckOutcome(
+        status=HealthCheckResult.Status.DOWN,
+        status_code=500,
+        latency_ms=1.0,
+        error_message="down",
+    )
+
+    run_health_check(endpoint)
+
+    mock_deliver.assert_not_called()
+    assert AlertEvent.objects.count() == 0
+    assert Incident.objects.filter(status=Incident.Status.OPEN).count() == 1
+
+
+@pytest.mark.django_db
+def test_acknowledge_incident(api_client) -> None:
+    from monitoring.factories import IncidentFactory
+    from monitoring.models import Incident
+
+    incident = IncidentFactory(status=Incident.Status.OPEN)
+    response = api_client.post(f"/api/incidents/{incident.id}/acknowledge/")
+
+    assert response.status_code == status.HTTP_200_OK
+    incident.refresh_from_db()
+    assert incident.acknowledged_at is not None
+    assert response.data["acknowledged_by_username"] == "tester"
