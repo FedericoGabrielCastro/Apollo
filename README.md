@@ -7,6 +7,7 @@ Django + React API Health Monitor (monolith).
 - **Backend:** Django 6 + Django REST Framework + httpx (Poetry)
 - **Frontend:** React + Vite + Redux Toolkit (pnpm)
 - **Data helpers:** Factory Boy + `seed` / `check_endpoints` commands
+- **Alerting:** webhook notifications on failure / recovery transitions
 
 ## Setup
 
@@ -32,7 +33,7 @@ poetry run python manage.py runserver
 pnpm --dir frontend dev
 ```
 
-Open http://localhost:5173 to manage endpoints (create / edit / delete / check / check due) and inspect per-endpoint history.
+Open http://localhost:5173 to manage endpoints, run checks, inspect history, and configure webhooks.
 
 ## Scheduling (cron)
 
@@ -44,6 +45,21 @@ Each endpoint has `check_interval_minutes`. Run due probes every minute from cro
 ```
 
 Or trigger the same logic from the UI / API with `POST /api/endpoints/check-due/`.
+
+## Alerting
+
+Alerts fire only on **status transitions**:
+
+- healthy / never-checked → `down` or `error` → **failure** alert
+- `down` / `error` → `up` → **recovery** alert
+- consecutive failures do **not** re-alert
+
+Configure per endpoint:
+
+- `webhook_url` — POST JSON payload destination
+- `alert_on_failure` — enable / disable alerting
+
+Useful for local testing: [webhook.site](https://webhook.site) or `POST /api/endpoints/:id/test-webhook/`.
 
 ## Useful commands
 
@@ -74,8 +90,11 @@ pnpm --dir frontend build
 |--------|------|-------------|
 | GET | `/api/health/` | Apollo liveness |
 | GET/POST | `/api/endpoints/` | List / create monitored endpoints |
-| GET/PUT/PATCH/DELETE | `/api/endpoints/:id/` | Endpoint detail (`last_check`, `is_due`) |
-| POST | `/api/endpoints/:id/check/` | Run a health check now |
+| GET/PUT/PATCH/DELETE | `/api/endpoints/:id/` | Endpoint detail (`last_check`, `last_alert`, `is_due`) |
+| POST | `/api/endpoints/:id/check/` | Run a health check now (may dispatch alerts) |
 | POST | `/api/endpoints/check-due/` | Run checks for all due endpoints |
 | GET | `/api/endpoints/:id/checks/` | Recent checks for one endpoint |
+| GET | `/api/endpoints/:id/alerts/` | Recent alert events for one endpoint |
+| POST | `/api/endpoints/:id/test-webhook/` | Send a test webhook payload |
 | GET | `/api/checks/` | List all check results |
+| GET | `/api/alerts/` | List all alert events |

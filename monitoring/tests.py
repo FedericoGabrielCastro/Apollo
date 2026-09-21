@@ -151,6 +151,8 @@ def test_update_endpoint() -> None:
             "is_active": False,
             "timeout_seconds": 10,
             "check_interval_minutes": 15,
+            "webhook_url": "https://hooks.example.com/x",
+            "alert_on_failure": False,
         },
         format="json",
     )
@@ -162,6 +164,8 @@ def test_update_endpoint() -> None:
     assert endpoint.expected_status == 204
     assert endpoint.is_active is False
     assert endpoint.check_interval_minutes == 15
+    assert endpoint.webhook_url == "https://hooks.example.com/x"
+    assert endpoint.alert_on_failure is False
 
 
 @pytest.mark.django_db
@@ -284,3 +288,172 @@ def test_list_endpoint_checks() -> None:
     assert len(response.data) == 2
     assert response.data[0]["id"] == newer.id
     assert response.data[1]["id"] == older.id
+
+
+@pytest.mark.django_db
+def test_resolve_alert_transitions() -> None:
+    from monitoring.alerts import resolve_alert_event_type
+    from monitoring.models import AlertEvent
+
+    assert resolve_alert_event_type(None, "down") == AlertEvent.EventType.FAILURE
+    assert resolve_alert_event_type("up", "error") == AlertEvent.EventType.FAILURE
+    assert resolve_alert_event_type("down", "down") is None
+    assert resolve_alert_event_type("error", "up") == AlertEvent.EventType.RECOVERY
+    assert resolve_alert_event_type("up", "up") is None
+
+
+@pytest.mark.django_db
+@patch("monitoring.alerts.deliver_webhook")
+@patch("monitoring.services.probe_endpoint")
+def test_failure_transition_sends_webhook(
+    mock_probe: MagicMock,
+    mock_deliver: MagicMock,
+) -> None:
+    from monitoring.models import AlertEvent
+
+    endpoint = MonitoredEndpointFactory(
+        webhook_url="https://hooks.example.com/apollo",
+        alert_on_failure=True,
+    )
+    HealthCheckResultFactory(endpoint=endpoint, status=HealthCheckResult.Status.UP)
+    mock_probe.return_value = CheckOutcome(
+        status=HealthCheckResult.Status.DOWN,
+        status_code=500,
+        latency_ms=20.0,
+        error_message="Expected status 200, got 500",
+    )
+    mock_deliver.return_value = (True, 200, "")
+
+    run_health_check(endpoint)
+
+    assert AlertEvent.objects.count() == 1
+    alert = AlertEvent.objects.get()
+    assert alert.event_type == AlertEvent.EventType.FAILURE
+    assert alert.success is True
+    mock_deliver.assert_called_once()
+
+
+@pytest.mark.django_db
+@patch("monitoring.alerts.deliver_webhook")
+@patch("monitoring.services.probe_endpoint")
+def test_consecutive_failures_do_not_realert(
+    mock_probe: MagicMock,
+    mock_deliver: MagicMock,
+) -> None:
+    from monitoring.models import AlertEvent
+
+    endpoint = MonitoredEndpointFactory(
+        webhook_url="https://hooks.example.com/apollo",
+    )
+    HealthCheckResultFactory(endpoint=endpoint, status=HealthCheckResult.Status.DOWN)
+    mock_probe.return_value = CheckOutcome(
+        status=HealthCheckResult.Status.DOWN,
+        status_code=500,
+        latency_ms=20.0,
+        error_message="still down",
+    )
+
+    run_health_check(endpoint)
+
+    assert AlertEvent.objects.count() == 0
+    mock_deliver.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("monitoring.alerts.deliver_webhook")
+@patch("monitoring.services.probe_endpoint")
+def test_recovery_sends_webhook(
+    mock_probe: MagicMock,
+    mock_deliver: MagicMock,
+) -> None:
+    from monitoring.models import AlertEvent
+
+    endpoint = MonitoredEndpointFactory(
+        webhook_url="https://hooks.example.com/apollo",
+    )
+    HealthCheckResultFactory(endpoint=endpoint, status=HealthCheckResult.Status.ERROR)
+    mock_probe.return_value = CheckOutcome(
+        status=HealthCheckResult.Status.UP,
+        status_code=200,
+        latency_ms=8.0,
+        error_message="",
+    )
+    mock_deliver.return_value = (True, 204, "")
+
+    run_health_check(endpoint)
+
+    alert = AlertEvent.objects.get()
+    assert alert.event_type == AlertEvent.EventType.RECOVERY
+
+
+@pytest.mark.django_db
+@patch("monitoring.alerts.deliver_webhook")
+@patch("monitoring.services.probe_endpoint")
+def test_alerts_disabled_skips_webhook(
+    mock_probe: MagicMock,
+    mock_deliver: MagicMock,
+) -> None:
+    from monitoring.models import AlertEvent
+
+    endpoint = MonitoredEndpointFactory(
+        webhook_url="https://hooks.example.com/apollo",
+        alert_on_failure=False,
+    )
+    mock_probe.return_value = CheckOutcome(
+        status=HealthCheckResult.Status.DOWN,
+        status_code=500,
+        latency_ms=20.0,
+        error_message="down",
+    )
+
+    run_health_check(endpoint)
+
+    assert AlertEvent.objects.count() == 0
+    mock_deliver.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_list_endpoint_alerts() -> None:
+    from monitoring.factories import AlertEventFactory
+
+    endpoint = MonitoredEndpointFactory()
+    newer = AlertEventFactory(endpoint=endpoint)
+    older = AlertEventFactory(endpoint=endpoint)
+    other = MonitoredEndpointFactory()
+    AlertEventFactory(endpoint=other)
+
+    client = APIClient()
+    response = client.get(f"/api/endpoints/{endpoint.id}/alerts/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 2
+    ids = {item["id"] for item in response.data}
+    assert newer.id in ids
+    assert older.id in ids
+
+
+@pytest.mark.django_db
+def test_test_webhook_requires_url() -> None:
+    endpoint = MonitoredEndpointFactory(webhook_url="")
+    client = APIClient()
+
+    response = client.post(f"/api/endpoints/{endpoint.id}/test-webhook/")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+@patch("monitoring.views.deliver_webhook")
+def test_test_webhook_action(mock_deliver: MagicMock) -> None:
+    endpoint = MonitoredEndpointFactory(
+        webhook_url="https://hooks.example.com/apollo",
+    )
+    HealthCheckResultFactory(endpoint=endpoint)
+    mock_deliver.return_value = (True, 200, "")
+    client = APIClient()
+
+    response = client.post(f"/api/endpoints/{endpoint.id}/test-webhook/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["success"] is True
+    mock_deliver.assert_called_once()

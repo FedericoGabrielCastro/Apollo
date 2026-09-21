@@ -14,6 +14,14 @@ class MonitoredEndpoint(models.Model):
         default=5,
         help_text="Minimum minutes between automatic due checks.",
     )
+    webhook_url = models.URLField(
+        blank=True,
+        help_text="Optional webhook notified on failure and recovery transitions.",
+    )
+    alert_on_failure = models.BooleanField(
+        default=True,
+        help_text="Send alerts when status transitions to down/error or recovers.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -48,3 +56,43 @@ class HealthCheckResult(models.Model):
 
     def __str__(self) -> str:
         return f"{self.endpoint.name}: {self.status} @ {self.checked_at}"
+
+
+class AlertEvent(models.Model):
+    """Record of an alert dispatched (or attempted) for a status transition."""
+
+    class EventType(models.TextChoices):
+        FAILURE = "failure", "Failure"
+        RECOVERY = "recovery", "Recovery"
+
+    class Channel(models.TextChoices):
+        WEBHOOK = "webhook", "Webhook"
+
+    endpoint = models.ForeignKey(
+        MonitoredEndpoint,
+        on_delete=models.CASCADE,
+        related_name="alerts",
+    )
+    check_result = models.ForeignKey(
+        HealthCheckResult,
+        on_delete=models.CASCADE,
+        related_name="alerts",
+    )
+    event_type = models.CharField(max_length=16, choices=EventType.choices)
+    channel = models.CharField(
+        max_length=16,
+        choices=Channel.choices,
+        default=Channel.WEBHOOK,
+    )
+    target = models.URLField(blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+    success = models.BooleanField(default=False)
+    response_status = models.PositiveSmallIntegerField(null=True, blank=True)
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.endpoint.name}: {self.event_type} ({self.channel})"

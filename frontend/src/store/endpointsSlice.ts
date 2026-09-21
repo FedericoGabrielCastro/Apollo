@@ -10,6 +10,20 @@ export type HealthCheckResult = {
   checked_at: string
 }
 
+export type AlertEvent = {
+  id: number
+  endpoint: number
+  check_result: number
+  event_type: "failure" | "recovery"
+  channel: "webhook"
+  target: string
+  payload: Record<string, unknown>
+  success: boolean
+  response_status: number | null
+  error_message: string
+  created_at: string
+}
+
 export type MonitoredEndpoint = {
   id: number
   name: string
@@ -19,9 +33,12 @@ export type MonitoredEndpoint = {
   is_active: boolean
   timeout_seconds: number
   check_interval_minutes: number
+  webhook_url: string
+  alert_on_failure: boolean
   created_at: string
   updated_at: string
   last_check: HealthCheckResult | null
+  last_alert: AlertEvent | null
   is_due: boolean
 }
 
@@ -33,10 +50,12 @@ export type EndpointInput = {
   is_active: boolean
   timeout_seconds: number
   check_interval_minutes: number
+  webhook_url: string
+  alert_on_failure: boolean
 }
 
-type HistoryEntry = {
-  items: HealthCheckResult[]
+type ListEntry<T> = {
+  items: T[]
   loading: boolean
   error: string | null
 }
@@ -48,7 +67,9 @@ type EndpointsState = {
   checkingDue: boolean
   checkingId: number | null
   deletingId: number | null
-  historyById: Record<number, HistoryEntry>
+  testingWebhookId: number | null
+  historyById: Record<number, ListEntry<HealthCheckResult>>
+  alertsById: Record<number, ListEntry<AlertEvent>>
   error: string | null
 }
 
@@ -59,7 +80,9 @@ const initialState: EndpointsState = {
   checkingDue: false,
   checkingId: null,
   deletingId: null,
+  testingWebhookId: null,
   historyById: {},
+  alertsById: {},
   error: null,
 }
 
@@ -175,6 +198,36 @@ export const fetchEndpointHistory = createAsyncThunk(
   },
 )
 
+export const fetchEndpointAlerts = createAsyncThunk(
+  "endpoints/fetchAlerts",
+  async (endpointId: number): Promise<{ endpointId: number; items: AlertEvent[] }> => {
+    const response = await fetch(`/api/endpoints/${endpointId}/alerts/`)
+    if (!response.ok) {
+      throw new Error(await readError(response, "Failed to load alerts"))
+    }
+    const items: AlertEvent[] = await response.json()
+    return { endpointId, items }
+  },
+)
+
+export const testEndpointWebhook = createAsyncThunk(
+  "endpoints/testWebhook",
+  async (endpointId: number): Promise<{ endpointId: number; success: boolean }> => {
+    const response = await fetch(`/api/endpoints/${endpointId}/test-webhook/`, {
+      method: "POST",
+    })
+    const body = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(
+        typeof body.detail === "string"
+          ? body.detail
+          : await readError(response, "Webhook test failed"),
+      )
+    }
+    return { endpointId, success: Boolean(body.success) }
+  },
+)
+
 function prependHistory(
   state: EndpointsState,
   endpointId: number,
@@ -194,6 +247,9 @@ const endpointsSlice = createSlice({
     },
     clearEndpointHistory(state, action: PayloadAction<number>) {
       delete state.historyById[action.payload]
+    },
+    clearEndpointAlerts(state, action: PayloadAction<number>) {
+      delete state.alertsById[action.payload]
     },
   },
   extraReducers: (builder) => {
@@ -247,6 +303,7 @@ const endpointsSlice = createSlice({
         state.deletingId = null
         state.items = state.items.filter((item) => item.id !== action.payload)
         delete state.historyById[action.payload]
+        delete state.alertsById[action.payload]
       })
       .addCase(deleteEndpoint.rejected, (state, action) => {
         state.deletingId = null
@@ -311,8 +368,47 @@ const endpointsSlice = createSlice({
           error: action.error.message ?? "Unknown error",
         }
       })
+      .addCase(fetchEndpointAlerts.pending, (state, action) => {
+        const endpointId = action.meta.arg
+        state.alertsById[endpointId] = {
+          items: state.alertsById[endpointId]?.items ?? [],
+          loading: true,
+          error: null,
+        }
+      })
+      .addCase(fetchEndpointAlerts.fulfilled, (state, action) => {
+        state.alertsById[action.payload.endpointId] = {
+          items: action.payload.items,
+          loading: false,
+          error: null,
+        }
+        const item = state.items.find((endpoint) => endpoint.id === action.payload.endpointId)
+        if (item) {
+          item.last_alert = action.payload.items[0] ?? null
+        }
+      })
+      .addCase(fetchEndpointAlerts.rejected, (state, action) => {
+        const endpointId = action.meta.arg
+        state.alertsById[endpointId] = {
+          items: state.alertsById[endpointId]?.items ?? [],
+          loading: false,
+          error: action.error.message ?? "Unknown error",
+        }
+      })
+      .addCase(testEndpointWebhook.pending, (state, action) => {
+        state.testingWebhookId = action.meta.arg
+        state.error = null
+      })
+      .addCase(testEndpointWebhook.fulfilled, (state) => {
+        state.testingWebhookId = null
+      })
+      .addCase(testEndpointWebhook.rejected, (state, action) => {
+        state.testingWebhookId = null
+        state.error = action.error.message ?? "Unknown error"
+      })
   },
 })
 
-export const { clearEndpointsError, clearEndpointHistory } = endpointsSlice.actions
+export const { clearEndpointsError, clearEndpointHistory, clearEndpointAlerts } =
+  endpointsSlice.actions
 export default endpointsSlice.reducer
