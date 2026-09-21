@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/apollo-banner.svg" alt="Apollo — API Health Monitor" width="100%" />
+  <img src="docs/apollo-banner.png" alt="Apollo — API Health Monitor" width="100%" />
 </p>
 
 <p align="center">
