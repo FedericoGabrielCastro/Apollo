@@ -21,10 +21,19 @@ class MonitoredEndpointAdmin(admin.ModelAdmin):
         "timeout_seconds",
         "check_interval_minutes",
         "alert_on_failure",
+        "check_ssl_expiry",
+        "mute_alerts_until",
         "webhook_url",
         "alert_email",
     )
-    list_filter = ("is_active", "is_public", "method", "alert_on_failure", "tags")
+    list_filter = (
+        "is_active",
+        "is_public",
+        "method",
+        "alert_on_failure",
+        "check_ssl_expiry",
+        "tags",
+    )
     search_fields = ("name", "url", "webhook_url", "alert_email")
     filter_horizontal = ("tags",)
 

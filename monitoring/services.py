@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import socket
+import ssl
 import time
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
+from urllib.parse import urlparse
 
 import httpx
 from django.db.models import Max, QuerySet
@@ -20,31 +23,121 @@ class CheckOutcome:
     error_message: str
 
 
+def _ssl_expiry_days_remaining(hostname: str, port: int = 443) -> int | None:
+    """Return days until TLS cert expiry for hostname, or None on failure."""
+    context = ssl.create_default_context()
+    with socket.create_connection((hostname, port), timeout=10) as sock:
+        with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+            cert = ssock.getpeercert()
+    if not cert:
+        return None
+    not_after = cert.get("notAfter")
+    if not not_after:
+        return None
+    expires = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(
+        tzinfo=dt_timezone.utc
+    )
+    remaining = expires - datetime.now(dt_timezone.utc)
+    return max(0, remaining.days)
+
+
+def check_ssl_certificate(endpoint: MonitoredEndpoint) -> str | None:
+    """
+    If SSL checking is enabled for an HTTPS URL, return an error message when
+    the certificate is missing, unreadable, or within the warn window.
+    """
+    if not endpoint.check_ssl_expiry:
+        return None
+
+    parsed = urlparse(endpoint.url)
+    if parsed.scheme.lower() != "https":
+        return None
+
+    hostname = parsed.hostname
+    if not hostname:
+        return "SSL check enabled but URL has no hostname"
+
+    port = parsed.port or 443
+    try:
+        days_left = _ssl_expiry_days_remaining(hostname, port)
+    except OSError as exc:
+        return f"SSL check failed: {exc}"
+    except ssl.SSLError as exc:
+        return f"SSL check failed: {exc}"
+
+    if days_left is None:
+        return "SSL check failed: could not read certificate expiry"
+
+    if days_left <= endpoint.ssl_warn_days:
+        return (
+            f"TLS certificate expires in {days_left} day(s) "
+            f"(warn threshold {endpoint.ssl_warn_days})"
+        )
+    return None
+
+
+def evaluate_response_assertions(
+    endpoint: MonitoredEndpoint,
+    *,
+    status_code: int,
+    latency_ms: float,
+    body: str,
+) -> str | None:
+    """Return the first failing assertion message, or None when all pass."""
+    if status_code != endpoint.expected_status:
+        return (
+            f"Expected status {endpoint.expected_status}, got {status_code}"
+        )
+
+    needle = (endpoint.expect_body_contains or "").strip()
+    if needle and needle not in body:
+        return f"Response body missing expected text: {needle!r}"
+
+    if endpoint.max_latency_ms is not None and latency_ms > endpoint.max_latency_ms:
+        return (
+            f"Latency {latency_ms:.2f}ms exceeds max "
+            f"{endpoint.max_latency_ms}ms"
+        )
+
+    return None
+
+
 def probe_endpoint(endpoint: MonitoredEndpoint) -> CheckOutcome:
-    """Perform an HTTP request and classify the result."""
+    """Perform an HTTP request (plus optional SSL check) and classify the result."""
+    ssl_error = check_ssl_certificate(endpoint)
+    if ssl_error:
+        return CheckOutcome(
+            status=HealthCheckResult.Status.DOWN,
+            status_code=None,
+            latency_ms=None,
+            error_message=ssl_error,
+        )
+
     started = time.perf_counter()
 
     try:
         with httpx.Client(timeout=endpoint.timeout_seconds, follow_redirects=True) as client:
             response = client.request(endpoint.method.upper(), endpoint.url)
         latency_ms = (time.perf_counter() - started) * 1000
-
-        if response.status_code == endpoint.expected_status:
+        assertion_error = evaluate_response_assertions(
+            endpoint,
+            status_code=response.status_code,
+            latency_ms=latency_ms,
+            body=response.text,
+        )
+        if assertion_error:
             return CheckOutcome(
-                status=HealthCheckResult.Status.UP,
+                status=HealthCheckResult.Status.DOWN,
                 status_code=response.status_code,
                 latency_ms=round(latency_ms, 2),
-                error_message="",
+                error_message=assertion_error,
             )
 
         return CheckOutcome(
-            status=HealthCheckResult.Status.DOWN,
+            status=HealthCheckResult.Status.UP,
             status_code=response.status_code,
             latency_ms=round(latency_ms, 2),
-            error_message=(
-                f"Expected status {endpoint.expected_status}, "
-                f"got {response.status_code}"
-            ),
+            error_message="",
         )
     except httpx.HTTPError as exc:
         latency_ms = (time.perf_counter() - started) * 1000

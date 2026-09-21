@@ -233,6 +233,16 @@ function AuthenticatedApp() {
                       {endpoint.alert_on_failure && endpoint.alert_email && (
                         <span className="app__muted"> · email</span>
                       )}
+                      {endpoint.check_ssl_expiry && (
+                        <span className="app__muted"> · ssl</span>
+                      )}
+                      {endpoint.mute_alerts_until &&
+                        new Date(endpoint.mute_alerts_until).getTime() > Date.now() && (
+                          <span className="app__badge">muted</span>
+                        )}
+                      {(endpoint.expect_body_contains || endpoint.max_latency_ms != null) && (
+                        <span className="app__muted"> · asserts</span>
+                      )}
                     </p>
                     <p className="app__row-url">
                       {endpoint.method} {endpoint.url}

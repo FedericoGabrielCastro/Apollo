@@ -31,6 +31,11 @@ class MonitoredEndpointFactory(factory.django.DjangoModelFactory):
     webhook_url = ""
     alert_email = ""
     alert_on_failure = True
+    expect_body_contains = ""
+    max_latency_ms = None
+    check_ssl_expiry = False
+    ssl_warn_days = 14
+    mute_alerts_until = None
 
 
 class HealthCheckResultFactory(factory.django.DjangoModelFactory):
