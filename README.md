@@ -32,7 +32,7 @@ poetry run python manage.py runserver
 pnpm --dir frontend dev
 ```
 
-Open http://localhost:5173 to manage endpoints (create / edit / delete / check / check due) and watch status.
+Open http://localhost:5173 to manage endpoints (create / edit / delete / check / check due) and inspect per-endpoint history.
 
 ## Scheduling (cron)
 
