@@ -4,97 +4,74 @@ Django + React API Health Monitor (monolith).
 
 ## Stack
 
-- **Backend:** Django 6 + DRF + httpx + Token auth + WhiteNoise + Gunicorn (Poetry)
-- **Frontend:** React + Vite + Redux Toolkit (pnpm)
-- **Data:** SQLite (local default) or **PostgreSQL** via `DATABASE_URL`
+- **Backend:** Django 6 + DRF + httpx + Token auth + WhiteNoise + Gunicorn
+- **Frontend:** React + Vite + Redux Toolkit + React Router (pnpm)
+- **Data:** SQLite (local) or PostgreSQL (`DATABASE_URL`)
 - **Ops:** Docker Compose (`db` + `web` + `worker`), GitHub Actions CI
-- **Features:** due checks, webhook alerts, uptime dashboard, background check worker
+- **Product:** due checks, webhooks + email alerts, incidents, tags, public status page, uptime dashboard
 
-## Quick start (local / SQLite)
+## Quick start (local)
 
 ```bash
 cp .env.example .env
 poetry install
 poetry run python manage.py migrate
 poetry run python manage.py seed
-
 pnpm --dir frontend install
+
 poetry run python manage.py runserver
 pnpm --dir frontend dev
 ```
 
-Open http://localhost:5173 — login **`apollo` / `apollo`**.
+- App: http://localhost:5173 — login **`apollo` / `apollo`**
+- Public status: http://localhost:5173/status
 
-## Docker (Postgres + web + worker)
+## Docker
 
 ```bash
 cp .env.example .env
-# set a real DJANGO_SECRET_KEY for deploys
 docker compose up --build
 ```
 
-Services:
+- App: http://localhost:8000
+- Status: http://localhost:8000/status
+- Worker runs `check_endpoints --due` on an interval
 
-| Service | Role |
-|---------|------|
-| `db` | PostgreSQL 16 |
-| `web` | Gunicorn API + SPA |
-| `worker` | Loop: `check_endpoints --due` every `CHECK_INTERVAL_SECONDS` |
+## Features
 
-App: http://localhost:8000  
-Login: `apollo` / `apollo` (seeded by web when `APOLLO_SEED_ON_STARTUP=true`)
+| Area | Details |
+|------|---------|
+| Auth | Token login/logout/me; API protected except health + public status |
+| Endpoints | CRUD, tags, public flag, interval, webhook + email |
+| Checks | Manual, due, history; worker loop in Compose |
+| Alerts | Transition-only webhook/email; stored `AlertEvent` |
+| Incidents | Auto-open on failure, auto-resolve on recovery |
+| Status page | Public `/status` + `GET /api/status/public/` |
+| Dashboard | Uptime, latency, due, open incidents |
 
-```bash
-docker compose logs -f worker
-docker compose down
-```
+## Key API routes
 
-## Environment
+| Method | Path | Auth |
+|--------|------|------|
+| GET | `/api/health/` | public |
+| GET | `/api/status/public/` | public |
+| POST | `/api/auth/login/` | public |
+| GET | `/api/dashboard/` | token |
+| CRUD | `/api/endpoints/` | token |
+| GET | `/api/incidents/?status=open` | token |
+| GET/POST | `/api/tags/` | token |
+| GET | `/api/alerts/` | token |
 
-See [`.env.example`](.env.example).
+## Env highlights
 
-| Variable | Purpose |
-|----------|---------|
-| `DATABASE_URL` | Postgres URL (empty = SQLite) |
-| `DJANGO_SQLITE_PATH` | SQLite path when `DATABASE_URL` is empty |
-| `CHECK_INTERVAL_SECONDS` | Worker loop interval (default 60) |
-| `APOLLO_SEED_ON_STARTUP` | Seed demo user/endpoints on web boot |
-| `DJANGO_SECRET_KEY` / `DJANGO_DEBUG` / `DJANGO_ALLOWED_HOSTS` | Django core |
+See `.env.example` for full list (`DATABASE_URL`, `CHECK_INTERVAL_SECONDS`, `EMAIL_*` / mailer settings, demo user, etc.).
 
-## Auth
-
-Token auth (`Authorization: Token <key>`). Public: `/api/health/`, `/api/auth/login/`.
-
-## Scheduling
-
-**Docker:** the `worker` service runs due checks automatically.
-
-**Host cron (SQLite/Poetry):**
-
-```bash
-* * * * * cd /path/to/Apollo && poetry run python manage.py check_endpoints --due
-```
-
-**One-shot / debug:**
-
-```bash
-poetry run python manage.py run_check_worker --once
-poetry run python manage.py run_check_worker --interval 30
-```
-
-## CI
-
-`.github/workflows/ci.yml`:
-
-1. Pytest against Postgres service
-2. pnpm build
-3. `docker build` + `docker compose config`
-
-## Useful commands
+## Commands
 
 ```bash
 poetry run pytest
 poetry run python manage.py check_endpoints --due
+poetry run python manage.py run_check_worker --once
 pnpm --dir frontend build
 docker compose up --build
 ```

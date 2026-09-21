@@ -4,6 +4,7 @@ import authReducer from "./authSlice"
 import dashboardReducer from "./dashboardSlice"
 import endpointsReducer from "./endpointsSlice"
 import healthReducer from "./healthSlice"
+import incidentsReducer from "./incidentsSlice"
 
 export const store = configureStore({
   reducer: {
@@ -11,6 +12,7 @@ export const store = configureStore({
     dashboard: dashboardReducer,
     health: healthReducer,
     endpoints: endpointsReducer,
+    incidents: incidentsReducer,
   },
 })
 

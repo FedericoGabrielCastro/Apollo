@@ -167,6 +167,22 @@ APOLLO_DEMO_PASSWORD = env("APOLLO_DEMO_PASSWORD", "apollo") or "apollo"
 APOLLO_SEED_ON_STARTUP = env_bool("APOLLO_SEED_ON_STARTUP", False)
 CHECK_INTERVAL_SECONDS = int(env("CHECK_INTERVAL_SECONDS", "60") or "60")
 
+_email_backend = (
+    env("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+    or "django.core.mail.backends.console.EmailBackend"
+)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "apollo@localhost") or "apollo@localhost"
+MAILERS = {
+    "default": {
+        "BACKEND": _email_backend,
+        "HOST": env("EMAIL_HOST", "") or "",
+        "PORT": int(env("EMAIL_PORT", "587") or "587"),
+        "USERNAME": env("EMAIL_HOST_USER", "") or "",
+        "PASSWORD": env("EMAIL_HOST_PASSWORD", "") or "",
+        "USE_TLS": env_bool("EMAIL_USE_TLS", True),
+    }
+}
+
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", not DEBUG)
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", not DEBUG)

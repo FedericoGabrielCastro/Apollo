@@ -11,6 +11,10 @@ function formatLatency(value: number | null) {
   return `${value}ms`
 }
 
+function formatTime(value: string) {
+  return new Date(value).toLocaleString()
+}
+
 export function DashboardPanel() {
   const dispatch = useAppDispatch()
   const { data, loading, error, hours } = useAppSelector((state) => state.dashboard)
@@ -74,6 +78,10 @@ export function DashboardPanel() {
             <div>
               <p className="dashboard__label">Alerts</p>
               <p className="dashboard__value">{summary.alerts_total}</p>
+            </div>
+            <div>
+              <p className="dashboard__label">Open incidents</p>
+              <p className="dashboard__value">{summary.open_incidents ?? 0}</p>
             </div>
             <div>
               <p className="dashboard__label">Active endpoints</p>
@@ -141,6 +149,22 @@ export function DashboardPanel() {
               )}
             </div>
           </div>
+
+          {data?.open_incident_list && data.open_incident_list.length > 0 && (
+            <div className="dashboard__incidents">
+              <h3>Open incidents</h3>
+              <ul className="dashboard__list">
+                {data.open_incident_list.map((incident) => (
+                  <li key={incident.id}>
+                    <strong>{incident.endpoint_name}</strong>
+                    <span className="app__badge app__badge--incident">open</span>
+                    <p className="dashboard__incident-summary">{incident.summary}</p>
+                    <p className="status-page__meta">Opened {formatTime(incident.opened_at)}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </>
       )}
     </section>
