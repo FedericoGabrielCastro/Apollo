@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -17,6 +18,13 @@ class Tag(models.Model):
 class MonitoredEndpoint(models.Model):
     """An external or internal HTTP endpoint to track."""
 
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="monitored_endpoints",
+    )
     name = models.CharField(max_length=120)
     url = models.URLField()
     method = models.CharField(max_length=10, default="GET")
@@ -48,6 +56,30 @@ class MonitoredEndpoint(models.Model):
         blank=True,
         help_text="If set, response body must contain this substring.",
     )
+    expect_header_name = models.CharField(
+        max_length=120,
+        blank=True,
+        help_text="Optional response header name that must be present.",
+    )
+    expect_header_value = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="If set with expect_header_name, header value must match (case-insensitive).",
+    )
+    expect_json_path = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Dot path into JSON body, e.g. data.status",
+    )
+    expect_json_value = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Expected value at expect_json_path (compared as string).",
+    )
+    request_body = models.TextField(
+        blank=True,
+        help_text="Optional request body for POST/PUT/PATCH probes.",
+    )
     max_latency_ms = models.PositiveIntegerField(
         null=True,
         blank=True,
@@ -64,7 +96,17 @@ class MonitoredEndpoint(models.Model):
     mute_alerts_until = models.DateTimeField(
         null=True,
         blank=True,
-        help_text="While set and in the future, skip webhook/email (incidents still sync).",
+        help_text="While set and in the future, skip alert channels (incidents still sync).",
+    )
+    quiet_hours_start = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Daily quiet-hours start (local Django TIME_ZONE). Pair with quiet_hours_end.",
+    )
+    quiet_hours_end = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Daily quiet-hours end. Alerts muted inside the window.",
     )
     request_headers = models.JSONField(
         default=dict,
@@ -212,6 +254,14 @@ class Incident(models.Model):
     )
     opened_at = models.DateTimeField(auto_now_add=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="acknowledged_incidents",
+    )
 
     class Meta:
         ordering = ["-opened_at"]

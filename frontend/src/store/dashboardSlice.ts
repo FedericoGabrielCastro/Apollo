@@ -26,6 +26,7 @@ export type DashboardOpenIncident = {
   endpoint_name: string
   summary: string
   opened_at: string
+  acknowledged_at: string | null
 }
 
 export type DashboardSeriesBucket = {

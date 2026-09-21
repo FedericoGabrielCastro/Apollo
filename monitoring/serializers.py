@@ -57,6 +57,11 @@ class TagSerializer(serializers.ModelSerializer):
 
 class IncidentSerializer(serializers.ModelSerializer):
     endpoint_name = serializers.CharField(source="endpoint.name", read_only=True)
+    acknowledged_by_username = serializers.CharField(
+        source="acknowledged_by.username",
+        read_only=True,
+        allow_null=True,
+    )
 
     class Meta:
         model = Incident
@@ -70,6 +75,9 @@ class IncidentSerializer(serializers.ModelSerializer):
             "resolved_by_check",
             "opened_at",
             "resolved_at",
+            "acknowledged_at",
+            "acknowledged_by",
+            "acknowledged_by_username",
         ]
         read_only_fields = fields
 
@@ -80,16 +88,24 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
     open_incident = serializers.SerializerMethodField()
     is_due = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
+    owner_username = serializers.CharField(source="owner.username", read_only=True, allow_null=True)
     method = serializers.CharField(default="GET", max_length=10)
     webhook_url = serializers.URLField(required=False, allow_blank=True)
     alert_email = serializers.EmailField(required=False, allow_blank=True)
     expect_body_contains = serializers.CharField(
         required=False, allow_blank=True, max_length=255
     )
+    expect_header_name = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    expect_header_value = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    expect_json_path = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    expect_json_value = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    request_body = serializers.CharField(required=False, allow_blank=True)
     max_latency_ms = serializers.IntegerField(
         required=False, allow_null=True, min_value=1
     )
     mute_alerts_until = serializers.DateTimeField(required=False, allow_null=True)
+    quiet_hours_start = serializers.TimeField(required=False, allow_null=True)
+    quiet_hours_end = serializers.TimeField(required=False, allow_null=True)
     discord_webhook_url = serializers.URLField(required=False, allow_blank=True)
     slack_webhook_url = serializers.URLField(required=False, allow_blank=True)
     request_headers = serializers.JSONField(required=False)
@@ -100,6 +116,8 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
         model = MonitoredEndpoint
         fields = [
             "id",
+            "owner",
+            "owner_username",
             "name",
             "url",
             "method",
@@ -112,10 +130,17 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
             "alert_email",
             "alert_on_failure",
             "expect_body_contains",
+            "expect_header_name",
+            "expect_header_value",
+            "expect_json_path",
+            "expect_json_value",
+            "request_body",
             "max_latency_ms",
             "check_ssl_expiry",
             "ssl_warn_days",
             "mute_alerts_until",
+            "quiet_hours_start",
+            "quiet_hours_end",
             "request_headers",
             "auth_type",
             "auth_username",
@@ -133,6 +158,8 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "owner",
+            "owner_username",
             "created_at",
             "updated_at",
             "last_check",

@@ -12,6 +12,7 @@ from monitoring.alerts import build_alert_payload, deliver_webhook
 from monitoring.dashboard import build_dashboard
 from monitoring.exports import csv_response
 from monitoring.models import AlertEvent, HealthCheckResult, Incident, MonitoredEndpoint, StatusPageConfig, Tag
+from monitoring.ownership import filter_endpoints_for_user
 from monitoring.pagination_utils import paginate_queryset
 from monitoring.serializers import (
     AlertEventSerializer,
@@ -77,7 +78,7 @@ class DashboardView(APIView):
             hours = int(request.query_params.get("hours", 24))
         except (TypeError, ValueError):
             hours = 24
-        return Response(build_dashboard(hours=hours))
+        return Response(build_dashboard(hours=hours, user=request.user))
 
 
 class MonitoredEndpointViewSet(viewsets.ModelViewSet):
@@ -86,15 +87,18 @@ class MonitoredEndpointViewSet(viewsets.ModelViewSet):
         "alerts",
         "tags",
         "incidents",
-    ).all()
+    ).select_related("owner").all()
     serializer_class = MonitoredEndpointSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = filter_endpoints_for_user(super().get_queryset(), self.request.user)
         tag = self.request.query_params.get("tag")
         if tag:
             queryset = queryset.filter(tags__name=tag.lower())
         return queryset.distinct()
+
+    def perform_create(self, serializer) -> None:
+        serializer.save(owner=self.request.user)
 
     @action(detail=True, methods=["post"])
     def check(self, request: Request, pk: str | None = None) -> Response:
@@ -217,22 +221,57 @@ class HealthCheckResultViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = HealthCheckResult.objects.select_related("endpoint").all()
     serializer_class = HealthCheckResultSerializer
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        visible = filter_endpoints_for_user(
+            MonitoredEndpoint.objects.all(),
+            self.request.user,
+        ).values_list("id", flat=True)
+        return queryset.filter(endpoint_id__in=visible)
+
 
 class AlertEventViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AlertEvent.objects.select_related("endpoint", "check_result").all()
     serializer_class = AlertEventSerializer
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        visible = filter_endpoints_for_user(
+            MonitoredEndpoint.objects.all(),
+            self.request.user,
+        ).values_list("id", flat=True)
+        return queryset.filter(endpoint_id__in=visible)
+
 
 class IncidentViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Incident.objects.select_related("endpoint").all()
+    queryset = Incident.objects.select_related("endpoint", "acknowledged_by").all()
     serializer_class = IncidentSerializer
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        visible = filter_endpoints_for_user(
+            MonitoredEndpoint.objects.all(),
+            self.request.user,
+        ).values_list("id", flat=True)
+        queryset = queryset.filter(endpoint_id__in=visible)
         status_filter = self.request.query_params.get("status")
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         return queryset
+
+    @action(detail=True, methods=["post"])
+    def acknowledge(self, request: Request, pk: str | None = None) -> Response:
+        incident = self.get_object()
+        if incident.status != Incident.Status.OPEN:
+            return Response(
+                {"detail": "Only open incidents can be acknowledged."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if incident.acknowledged_at is None:
+            incident.acknowledged_at = timezone.now()
+            incident.acknowledged_by = request.user
+            incident.save(update_fields=["acknowledged_at", "acknowledged_by"])
+        return Response(IncidentSerializer(incident).data)
 
 
 class TagViewSet(viewsets.ModelViewSet):
@@ -252,10 +291,17 @@ class ExportView(APIView):
         hours = max(1, min(hours, 24 * 90))
         since = timezone.now() - timedelta(hours=hours)
         endpoint_id = request.query_params.get("endpoint_id")
+        visible_ids = list(
+            filter_endpoints_for_user(
+                MonitoredEndpoint.objects.all(),
+                request.user,
+            ).values_list("id", flat=True)
+        )
 
         if resource == "checks":
             queryset = HealthCheckResult.objects.select_related("endpoint").filter(
-                checked_at__gte=since
+                checked_at__gte=since,
+                endpoint_id__in=visible_ids,
             )
             if endpoint_id:
                 queryset = queryset.filter(endpoint_id=endpoint_id)
@@ -289,7 +335,8 @@ class ExportView(APIView):
 
         if resource == "alerts":
             queryset = AlertEvent.objects.select_related("endpoint").filter(
-                created_at__gte=since
+                created_at__gte=since,
+                endpoint_id__in=visible_ids,
             )
             if endpoint_id:
                 queryset = queryset.filter(endpoint_id=endpoint_id)
@@ -326,7 +373,9 @@ class ExportView(APIView):
             )
 
         if resource == "incidents":
-            queryset = Incident.objects.select_related("endpoint").all()
+            queryset = Incident.objects.select_related("endpoint").filter(
+                endpoint_id__in=visible_ids,
+            )
             if endpoint_id:
                 queryset = queryset.filter(endpoint_id=endpoint_id)
             status_filter = request.query_params.get("status")
@@ -341,6 +390,7 @@ class ExportView(APIView):
                     item.summary,
                     item.opened_at.isoformat(),
                     item.resolved_at.isoformat() if item.resolved_at else "",
+                    item.acknowledged_at.isoformat() if item.acknowledged_at else "",
                 )
                 for item in queryset.order_by("-opened_at")[:5000]
             )
@@ -354,6 +404,7 @@ class ExportView(APIView):
                     "summary",
                     "opened_at",
                     "resolved_at",
+                    "acknowledged_at",
                 ],
                 rows,
             )

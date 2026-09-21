@@ -18,6 +18,7 @@ class StatusPageConfigAdmin(admin.ModelAdmin):
 class MonitoredEndpointAdmin(admin.ModelAdmin):
     list_display = (
         "name",
+        "owner",
         "url",
         "method",
         "expected_status",
@@ -28,6 +29,8 @@ class MonitoredEndpointAdmin(admin.ModelAdmin):
         "alert_on_failure",
         "check_ssl_expiry",
         "mute_alerts_until",
+        "quiet_hours_start",
+        "quiet_hours_end",
         "webhook_url",
         "alert_email",
     )
@@ -39,9 +42,11 @@ class MonitoredEndpointAdmin(admin.ModelAdmin):
         "alert_on_failure",
         "check_ssl_expiry",
         "tags",
+        "owner",
     )
     search_fields = ("name", "url", "webhook_url", "alert_email", "discord_webhook_url", "slack_webhook_url")
     filter_horizontal = ("tags",)
+    raw_id_fields = ("owner",)
 
 
 @admin.register(HealthCheckResult)
@@ -87,7 +92,15 @@ class AlertEventAdmin(admin.ModelAdmin):
 
 @admin.register(Incident)
 class IncidentAdmin(admin.ModelAdmin):
-    list_display = ("endpoint", "status", "summary", "opened_at", "resolved_at")
+    list_display = (
+        "endpoint",
+        "status",
+        "summary",
+        "opened_at",
+        "resolved_at",
+        "acknowledged_at",
+        "acknowledged_by",
+    )
     list_filter = ("status",)
     search_fields = ("endpoint__name", "summary")
     readonly_fields = (
@@ -98,4 +111,6 @@ class IncidentAdmin(admin.ModelAdmin):
         "resolved_by_check",
         "opened_at",
         "resolved_at",
+        "acknowledged_at",
+        "acknowledged_by",
     )

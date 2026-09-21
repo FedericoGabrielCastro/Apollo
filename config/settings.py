@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,11 +32,16 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-SECRET_KEY = env(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-d90!b7=ck2e9yg59eu4)03zucv&yjj2z3hnoiss2z&yt1g2p)q",
-)
 DEBUG = env_bool("DJANGO_DEBUG", True)
+SECRET_KEY = env("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        # Local/dev only — never used when DEBUG is false.
+        SECRET_KEY = "dev-only-change-me"
+    else:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false."
+        )
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", "")
 
@@ -165,6 +171,7 @@ REST_FRAMEWORK = {
 APOLLO_DEMO_USERNAME = env("APOLLO_DEMO_USERNAME", "apollo") or "apollo"
 APOLLO_DEMO_PASSWORD = env("APOLLO_DEMO_PASSWORD", "apollo") or "apollo"
 APOLLO_SEED_ON_STARTUP = env_bool("APOLLO_SEED_ON_STARTUP", False)
+APOLLO_ALLOW_REGISTER = env_bool("APOLLO_ALLOW_REGISTER", True)
 CHECK_INTERVAL_SECONDS = int(env("CHECK_INTERVAL_SECONDS", "60") or "60")
 CHECK_RETENTION_DAYS = int(env("CHECK_RETENTION_DAYS", "30") or "30")
 

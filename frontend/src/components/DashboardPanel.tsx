@@ -7,6 +7,8 @@ import {
   setDashboardHours,
   type DashboardSeriesBucket,
 } from "../store/dashboardSlice"
+import { fetchEndpoints } from "../store/endpointsSlice"
+import { acknowledgeIncident, fetchIncidents } from "../store/incidentsSlice"
 
 function formatPercent(value: number | null) {
   if (value == null) return "n/a"
@@ -119,9 +121,17 @@ async function downloadExport(path: string, filename: string) {
 export function DashboardPanel() {
   const dispatch = useAppDispatch()
   const { data, loading, error, hours } = useAppSelector((state) => state.dashboard)
+  const { acknowledgingId } = useAppSelector((state) => state.incidents)
   const summary = data?.summary
   const [exportError, setExportError] = useState<string | null>(null)
   const [exporting, setExporting] = useState<string | null>(null)
+
+  async function handleAcknowledge(incidentId: number) {
+    await dispatch(acknowledgeIncident(incidentId)).unwrap()
+    void dispatch(fetchDashboard(hours))
+    void dispatch(fetchIncidents("open"))
+    void dispatch(fetchEndpoints())
+  }
 
   async function handleExport(path: string, filename: string, key: string) {
     setExportError(null)
@@ -328,11 +338,26 @@ export function DashboardPanel() {
               <h3>Open incidents</h3>
               <ul className="dashboard__list">
                 {data.open_incident_list.map((incident) => (
-                  <li key={incident.id}>
-                    <strong>{incident.endpoint_name}</strong>
-                    <span className="app__badge app__badge--incident">open</span>
+                  <li key={incident.id} className="dashboard__incident-item">
+                    <div className="dashboard__incident-head">
+                      <strong>{incident.endpoint_name}</strong>
+                      <span className="app__badge app__badge--incident">open</span>
+                      {incident.acknowledged_at && (
+                        <span className="app__badge app__badge--ack">acknowledged</span>
+                      )}
+                    </div>
                     <p className="dashboard__incident-summary">{incident.summary}</p>
                     <p className="status-page__meta">Opened {formatTime(incident.opened_at)}</p>
+                    {!incident.acknowledged_at && (
+                      <button
+                        type="button"
+                        className="app__button app__button--ack"
+                        disabled={acknowledgingId === incident.id}
+                        onClick={() => void handleAcknowledge(incident.id)}
+                      >
+                        {acknowledgingId === incident.id ? "Acknowledging…" : "Acknowledge"}
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

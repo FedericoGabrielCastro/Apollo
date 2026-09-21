@@ -76,12 +76,33 @@ def check_ssl_certificate(endpoint: MonitoredEndpoint) -> str | None:
     return None
 
 
+def _resolve_json_path(payload: object, path: str) -> object | None:
+    """Walk a simple dotted path (supports list indexes as digits)."""
+    current: object = payload
+    for part in path.split("."):
+        if part == "":
+            continue
+        if isinstance(current, dict):
+            if part not in current:
+                return None
+            current = current[part]
+        elif isinstance(current, list) and part.isdigit():
+            index = int(part)
+            if index < 0 or index >= len(current):
+                return None
+            current = current[index]
+        else:
+            return None
+    return current
+
+
 def evaluate_response_assertions(
     endpoint: MonitoredEndpoint,
     *,
     status_code: int,
     latency_ms: float,
     body: str,
+    headers: dict[str, str] | None = None,
 ) -> str | None:
     """Return the first failing assertion message, or None when all pass."""
     if status_code != endpoint.expected_status:
@@ -92,6 +113,37 @@ def evaluate_response_assertions(
     needle = (endpoint.expect_body_contains or "").strip()
     if needle and needle not in body:
         return f"Response body missing expected text: {needle!r}"
+
+    header_name = (endpoint.expect_header_name or "").strip()
+    if header_name:
+        header_map = {k.lower(): v for k, v in (headers or {}).items()}
+        actual = header_map.get(header_name.lower())
+        if actual is None:
+            return f"Response missing header {header_name!r}"
+        expected_header = (endpoint.expect_header_value or "").strip()
+        if expected_header and actual.lower() != expected_header.lower():
+            return (
+                f"Header {header_name!r} expected {expected_header!r}, "
+                f"got {actual!r}"
+            )
+
+    json_path = (endpoint.expect_json_path or "").strip()
+    if json_path:
+        import json
+
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            return "Response body is not valid JSON for JSON path assertion"
+        resolved = _resolve_json_path(payload, json_path)
+        if resolved is None:
+            return f"JSON path {json_path!r} not found"
+        expected_json = (endpoint.expect_json_value or "").strip()
+        if expected_json and str(resolved) != expected_json:
+            return (
+                f"JSON path {json_path!r} expected {expected_json!r}, "
+                f"got {resolved!r}"
+            )
 
     if endpoint.max_latency_ms is not None and latency_ms > endpoint.max_latency_ms:
         return (
@@ -142,10 +194,15 @@ def probe_endpoint(endpoint: MonitoredEndpoint) -> CheckOutcome:
             follow_redirects=True,
             auth=auth,
         ) as client:
+            method = endpoint.method.upper()
+            content = None
+            if method in {"POST", "PUT", "PATCH", "DELETE"} and endpoint.request_body:
+                content = endpoint.request_body
             response = client.request(
-                endpoint.method.upper(),
+                method,
                 endpoint.url,
                 headers=headers,
+                content=content,
             )
         latency_ms = (time.perf_counter() - started) * 1000
         assertion_error = evaluate_response_assertions(
@@ -153,6 +210,7 @@ def probe_endpoint(endpoint: MonitoredEndpoint) -> CheckOutcome:
             status_code=response.status_code,
             latency_ms=latency_ms,
             body=response.text,
+            headers=dict(response.headers),
         )
         if assertion_error:
             return CheckOutcome(

@@ -34,10 +34,15 @@ export type OpenIncident = {
   summary: string
   opened_at: string
   resolved_at: string | null
+  acknowledged_at: string | null
+  acknowledged_by: number | null
+  acknowledged_by_username: string | null
 }
 
 export type MonitoredEndpoint = {
   id: number
+  owner: number | null
+  owner_username: string | null
   name: string
   url: string
   method: string
@@ -50,10 +55,17 @@ export type MonitoredEndpoint = {
   alert_email: string
   alert_on_failure: boolean
   expect_body_contains: string
+  expect_header_name: string
+  expect_header_value: string
+  expect_json_path: string
+  expect_json_value: string
+  request_body: string
   max_latency_ms: number | null
   check_ssl_expiry: boolean
   ssl_warn_days: number
   mute_alerts_until: string | null
+  quiet_hours_start: string | null
+  quiet_hours_end: string | null
   request_headers: Record<string, string>
   auth_type: "none" | "bearer" | "basic"
   auth_username: string
@@ -83,10 +95,17 @@ export type EndpointInput = {
   alert_email: string
   alert_on_failure: boolean
   expect_body_contains: string
+  expect_header_name: string
+  expect_header_value: string
+  expect_json_path: string
+  expect_json_value: string
+  request_body: string
   max_latency_ms: number | null
   check_ssl_expiry: boolean
   ssl_warn_days: number
   mute_alerts_until: string | null
+  quiet_hours_start: string | null
+  quiet_hours_end: string | null
   request_headers: Record<string, string>
   auth_type: "none" | "bearer" | "basic"
   auth_username: string
