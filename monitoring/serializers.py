@@ -1,6 +1,12 @@
 from rest_framework import serializers
 
-from monitoring.models import AlertEvent, HealthCheckResult, MonitoredEndpoint
+from monitoring.models import (
+    AlertEvent,
+    HealthCheckResult,
+    Incident,
+    MonitoredEndpoint,
+    Tag,
+)
 from monitoring.services import is_endpoint_due
 
 HTTP_METHODS = ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE")
@@ -40,12 +46,41 @@ class AlertEventSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class TagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tag
+        fields = ["id", "name", "created_at"]
+        read_only_fields = ["id", "created_at"]
+
+
+class IncidentSerializer(serializers.ModelSerializer):
+    endpoint_name = serializers.CharField(source="endpoint.name", read_only=True)
+
+    class Meta:
+        model = Incident
+        fields = [
+            "id",
+            "endpoint",
+            "endpoint_name",
+            "status",
+            "summary",
+            "opened_by_check",
+            "resolved_by_check",
+            "opened_at",
+            "resolved_at",
+        ]
+        read_only_fields = fields
+
+
 class MonitoredEndpointSerializer(serializers.ModelSerializer):
     last_check = serializers.SerializerMethodField()
     last_alert = serializers.SerializerMethodField()
+    open_incident = serializers.SerializerMethodField()
     is_due = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
     method = serializers.CharField(default="GET", max_length=10)
     webhook_url = serializers.URLField(required=False, allow_blank=True)
+    alert_email = serializers.EmailField(required=False, allow_blank=True)
 
     class Meta:
         model = MonitoredEndpoint
@@ -56,14 +91,18 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
             "method",
             "expected_status",
             "is_active",
+            "is_public",
             "timeout_seconds",
             "check_interval_minutes",
             "webhook_url",
+            "alert_email",
             "alert_on_failure",
+            "tags",
             "created_at",
             "updated_at",
             "last_check",
             "last_alert",
+            "open_incident",
             "is_due",
         ]
         read_only_fields = [
@@ -72,7 +111,9 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
             "updated_at",
             "last_check",
             "last_alert",
+            "open_incident",
             "is_due",
+            "tags",
         ]
 
     def validate_method(self, value: str) -> str:
@@ -104,6 +145,44 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def _parse_tag_names(self) -> list[str] | None:
+        if "tags" not in self.initial_data:
+            return None
+        raw = self.initial_data.get("tags") or []
+        if isinstance(raw, str):
+            raw = [raw]
+        cleaned = []
+        for item in raw:
+            name = str(item).strip().lower()
+            if name:
+                cleaned.append(name)
+        return cleaned
+
+    def _sync_tags(self, endpoint: MonitoredEndpoint, names: list[str]) -> None:
+        tags = []
+        for name in names:
+            tag, _ = Tag.objects.get_or_create(name=name)
+            tags.append(tag)
+        endpoint.tags.set(tags)
+
+    def create(self, validated_data: dict) -> MonitoredEndpoint:
+        endpoint = MonitoredEndpoint.objects.create(**validated_data)
+        tag_names = self._parse_tag_names() or []
+        self._sync_tags(endpoint, tag_names)
+        return endpoint
+
+    def update(self, instance: MonitoredEndpoint, validated_data: dict) -> MonitoredEndpoint:
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        tag_names = self._parse_tag_names()
+        if tag_names is not None:
+            self._sync_tags(instance, tag_names)
+        return instance
+
+    def get_tags(self, obj: MonitoredEndpoint) -> list[str]:
+        return list(obj.tags.values_list("name", flat=True))
+
     def get_last_check(self, obj: MonitoredEndpoint) -> dict | None:
         check = obj.checks.order_by("-checked_at").first()
         if check is None:
@@ -115,6 +194,12 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
         if alert is None:
             return None
         return AlertEventSerializer(alert).data
+
+    def get_open_incident(self, obj: MonitoredEndpoint) -> dict | None:
+        incident = obj.incidents.filter(status=Incident.Status.OPEN).first()
+        if incident is None:
+            return None
+        return IncidentSerializer(incident).data
 
     def get_is_due(self, obj: MonitoredEndpoint) -> bool:
         last = (

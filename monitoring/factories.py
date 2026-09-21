@@ -1,6 +1,19 @@
 import factory
 
-from monitoring.models import AlertEvent, HealthCheckResult, MonitoredEndpoint
+from monitoring.models import (
+    AlertEvent,
+    HealthCheckResult,
+    Incident,
+    MonitoredEndpoint,
+    Tag,
+)
+
+
+class TagFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Tag
+
+    name = factory.Sequence(lambda n: f"tag-{n}")
 
 
 class MonitoredEndpointFactory(factory.django.DjangoModelFactory):
@@ -12,9 +25,11 @@ class MonitoredEndpointFactory(factory.django.DjangoModelFactory):
     method = "GET"
     expected_status = 200
     is_active = True
+    is_public = True
     timeout_seconds = 5
     check_interval_minutes = 5
     webhook_url = ""
+    alert_email = ""
     alert_on_failure = True
 
 
@@ -44,3 +59,19 @@ class AlertEventFactory(factory.django.DjangoModelFactory):
     success = True
     response_status = 200
     error_message = ""
+
+
+class IncidentFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Incident
+
+    endpoint = factory.SubFactory(MonitoredEndpointFactory)
+    status = Incident.Status.OPEN
+    summary = "Endpoint became down"
+    opened_by_check = factory.LazyAttribute(
+        lambda obj: HealthCheckResultFactory(
+            endpoint=obj.endpoint,
+            status=HealthCheckResult.Status.DOWN,
+            status_code=500,
+        )
+    )

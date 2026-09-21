@@ -423,6 +423,116 @@
   font-size: 0.9rem;
 }
 
+.dashboard__incidents {
+  margin-top: 1.25rem;
+}
+
+.dashboard__incident-summary {
+  margin: 0.2rem 0 0;
+  color: #4a5560;
+  font-size: 0.9rem;
+}
+
+.app__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.35rem;
+}
+
+.app__tag {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid rgba(26, 31, 36, 0.15);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: #5a6670;
+}
+
+.app__badge {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid rgba(155, 44, 44, 0.35);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.app__badge--incident {
+  color: #9b2c2c;
+}
+
+.status-page__nav {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.status-page__link {
+  color: #4a5560;
+  font-size: 0.9rem;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.status-page__link:hover {
+  color: #1a1f24;
+  border-bottom-color: rgba(26, 31, 36, 0.25);
+}
+
+.status-page__overall,
+.status-page__incidents,
+.status-page__endpoints {
+  margin-bottom: 2rem;
+}
+
+.status-page__overall h2,
+.status-page__incidents h2,
+.status-page__endpoints h2 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #5a6670;
+}
+
+.status-page__meta {
+  margin: 0.35rem 0 0;
+  color: #5a6670;
+  font-size: 0.85rem;
+}
+
+.status-page__summary {
+  margin: 0.25rem 0 0;
+  color: #4a5560;
+  font-size: 0.9rem;
+}
+
+.status-page__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.status-page__list > li {
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid rgba(26, 31, 36, 0.1);
+}
+
+.status-page__endpoint-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 @media (max-width: 640px) {
   .app__row {
     flex-direction: column;
@@ -447,5 +557,10 @@
 
   .app__header-top {
     flex-direction: column;
+  }
+
+  .status-page__endpoint-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

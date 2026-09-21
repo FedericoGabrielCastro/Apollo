@@ -8,13 +8,16 @@ from rest_framework.views import APIView
 
 from monitoring.alerts import build_alert_payload, deliver_webhook
 from monitoring.dashboard import build_dashboard
-from monitoring.models import AlertEvent, HealthCheckResult, MonitoredEndpoint
+from monitoring.models import AlertEvent, HealthCheckResult, Incident, MonitoredEndpoint, Tag
 from monitoring.serializers import (
     AlertEventSerializer,
     HealthCheckResultSerializer,
+    IncidentSerializer,
     MonitoredEndpointSerializer,
+    TagSerializer,
 )
 from monitoring.services import run_due_checks, run_health_check
+from monitoring.statuspage import build_public_status
 
 
 class HealthView(APIView):
@@ -33,6 +36,16 @@ class HealthView(APIView):
         )
 
 
+class PublicStatusView(APIView):
+    """Unauthenticated public status page payload."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request: Request) -> Response:
+        return Response(build_public_status())
+
+
 class DashboardView(APIView):
     """Aggregated uptime and operational metrics."""
 
@@ -45,8 +58,20 @@ class DashboardView(APIView):
 
 
 class MonitoredEndpointViewSet(viewsets.ModelViewSet):
-    queryset = MonitoredEndpoint.objects.prefetch_related("checks", "alerts").all()
+    queryset = MonitoredEndpoint.objects.prefetch_related(
+        "checks",
+        "alerts",
+        "tags",
+        "incidents",
+    ).all()
     serializer_class = MonitoredEndpointSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        tag = self.request.query_params.get("tag")
+        if tag:
+            queryset = queryset.filter(tags__name=tag.lower())
+        return queryset.distinct()
 
     @action(detail=True, methods=["post"])
     def check(self, request: Request, pk: str | None = None) -> Response:
@@ -78,6 +103,12 @@ class MonitoredEndpointViewSet(viewsets.ModelViewSet):
         endpoint = self.get_object()
         results = endpoint.alerts.all()[:50]
         return Response(AlertEventSerializer(results, many=True).data)
+
+    @action(detail=True, methods=["get"], url_path="incidents")
+    def incidents(self, request: Request, pk: str | None = None) -> Response:
+        endpoint = self.get_object()
+        results = endpoint.incidents.all()[:50]
+        return Response(IncidentSerializer(results, many=True).data)
 
     @action(detail=True, methods=["post"], url_path="test-webhook")
     def test_webhook(self, request: Request, pk: str | None = None) -> Response:
@@ -152,3 +183,21 @@ class HealthCheckResultViewSet(viewsets.ReadOnlyModelViewSet):
 class AlertEventViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AlertEvent.objects.select_related("endpoint", "check_result").all()
     serializer_class = AlertEventSerializer
+
+
+class IncidentViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Incident.objects.select_related("endpoint").all()
+    serializer_class = IncidentSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        status_filter = self.request.query_params.get("status")
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        return queryset
+
+
+class TagViewSet(viewsets.ModelViewSet):
+    queryset = Tag.objects.all()
+    serializer_class = TagSerializer
+    http_method_names = ["get", "post", "delete", "head", "options"]

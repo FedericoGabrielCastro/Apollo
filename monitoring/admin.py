@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from monitoring.models import AlertEvent, HealthCheckResult, MonitoredEndpoint
+from monitoring.models import AlertEvent, HealthCheckResult, Incident, MonitoredEndpoint, Tag
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ("name", "created_at")
+    search_fields = ("name",)
 
 
 @admin.register(MonitoredEndpoint)
@@ -11,13 +17,16 @@ class MonitoredEndpointAdmin(admin.ModelAdmin):
         "method",
         "expected_status",
         "is_active",
+        "is_public",
         "timeout_seconds",
         "check_interval_minutes",
         "alert_on_failure",
         "webhook_url",
+        "alert_email",
     )
-    list_filter = ("is_active", "method", "alert_on_failure")
-    search_fields = ("name", "url", "webhook_url")
+    list_filter = ("is_active", "is_public", "method", "alert_on_failure", "tags")
+    search_fields = ("name", "url", "webhook_url", "alert_email")
+    filter_horizontal = ("tags",)
 
 
 @admin.register(HealthCheckResult)
@@ -58,4 +67,20 @@ class AlertEventAdmin(admin.ModelAdmin):
         "response_status",
         "error_message",
         "created_at",
+    )
+
+
+@admin.register(Incident)
+class IncidentAdmin(admin.ModelAdmin):
+    list_display = ("endpoint", "status", "summary", "opened_at", "resolved_at")
+    list_filter = ("status",)
+    search_fields = ("endpoint__name", "summary")
+    readonly_fields = (
+        "endpoint",
+        "status",
+        "summary",
+        "opened_by_check",
+        "resolved_by_check",
+        "opened_at",
+        "resolved_at",
     )

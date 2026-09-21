@@ -6,7 +6,7 @@ from typing import Any
 from django.db.models import Avg, Count, Q
 from django.utils import timezone
 
-from monitoring.models import AlertEvent, HealthCheckResult, MonitoredEndpoint
+from monitoring.models import AlertEvent, HealthCheckResult, Incident, MonitoredEndpoint
 from monitoring.services import due_endpoints
 
 
@@ -21,8 +21,9 @@ def build_dashboard(*, hours: int = 24) -> dict[str, Any]:
     alerting = [
         endpoint
         for endpoint in endpoints
-        if endpoint.alert_on_failure and endpoint.webhook_url
+        if endpoint.alert_on_failure and (endpoint.webhook_url or endpoint.alert_email)
     ]
+    open_incidents = Incident.objects.filter(status=Incident.Status.OPEN).count()
 
     checks = HealthCheckResult.objects.filter(checked_at__gte=since)
     check_stats = checks.aggregate(
@@ -116,6 +117,7 @@ def build_dashboard(*, hours: int = 24) -> dict[str, Any]:
             "alerts_failed_delivery": alert_stats["failed"] or 0,
             "alerts_failure_events": alert_stats["failures"] or 0,
             "alerts_recovery_events": alert_stats["recoveries"] or 0,
+            "open_incidents": open_incidents,
         },
         "endpoints": endpoint_rows,
         "recent_failures": [
@@ -141,5 +143,17 @@ def build_dashboard(*, hours: int = 24) -> dict[str, Any]:
                 "created_at": item.created_at.isoformat(),
             }
             for item in recent_alerts
+        ],
+        "open_incident_list": [
+            {
+                "id": item.id,
+                "endpoint_id": item.endpoint_id,
+                "endpoint_name": item.endpoint.name,
+                "summary": item.summary,
+                "opened_at": item.opened_at.isoformat(),
+            }
+            for item in Incident.objects.filter(status=Incident.Status.OPEN)
+            .select_related("endpoint")
+            .order_by("-opened_at")[:10]
         ],
     }

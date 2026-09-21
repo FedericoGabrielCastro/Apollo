@@ -17,13 +17,23 @@ export type AlertEvent = {
   endpoint: number
   check_result: number
   event_type: "failure" | "recovery"
-  channel: "webhook"
+  channel: "webhook" | "email"
   target: string
   payload: Record<string, unknown>
   success: boolean
   response_status: number | null
   error_message: string
   created_at: string
+}
+
+export type OpenIncident = {
+  id: number
+  endpoint: number
+  endpoint_name: string
+  status: string
+  summary: string
+  opened_at: string
+  resolved_at: string | null
 }
 
 export type MonitoredEndpoint = {
@@ -33,14 +43,18 @@ export type MonitoredEndpoint = {
   method: string
   expected_status: number
   is_active: boolean
+  is_public: boolean
   timeout_seconds: number
   check_interval_minutes: number
   webhook_url: string
+  alert_email: string
   alert_on_failure: boolean
+  tags: string[]
   created_at: string
   updated_at: string
   last_check: HealthCheckResult | null
   last_alert: AlertEvent | null
+  open_incident: OpenIncident | null
   is_due: boolean
 }
 
@@ -50,10 +64,13 @@ export type EndpointInput = {
   method: string
   expected_status: number
   is_active: boolean
+  is_public: boolean
   timeout_seconds: number
   check_interval_minutes: number
   webhook_url: string
+  alert_email: string
   alert_on_failure: boolean
+  tags: string[]
 }
 
 type ListEntry<T> = {

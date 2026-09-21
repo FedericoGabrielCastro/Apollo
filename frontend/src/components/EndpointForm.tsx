@@ -11,10 +11,13 @@ const EMPTY_FORM: EndpointInput = {
   method: "GET",
   expected_status: 200,
   is_active: true,
+  is_public: false,
   timeout_seconds: 5,
   check_interval_minutes: 5,
   webhook_url: "",
+  alert_email: "",
   alert_on_failure: true,
+  tags: [],
 }
 
 type EndpointFormProps = {
@@ -31,10 +34,13 @@ function toInput(endpoint: MonitoredEndpoint): EndpointInput {
     method: endpoint.method,
     expected_status: endpoint.expected_status,
     is_active: endpoint.is_active,
+    is_public: endpoint.is_public,
     timeout_seconds: endpoint.timeout_seconds,
     check_interval_minutes: endpoint.check_interval_minutes,
     webhook_url: endpoint.webhook_url,
+    alert_email: endpoint.alert_email,
     alert_on_failure: endpoint.alert_on_failure,
+    tags: endpoint.tags ?? [],
   }
 }
 
@@ -47,16 +53,25 @@ export function EndpointForm({
   const [form, setForm] = useState<EndpointInput>(
     initial ? toInput(initial) : EMPTY_FORM,
   )
+  const [tagsText, setTagsText] = useState(
+    initial ? (initial.tags ?? []).join(", ") : "",
+  )
 
   useEffect(() => {
     setForm(initial ? toInput(initial) : EMPTY_FORM)
+    setTagsText(initial ? (initial.tags ?? []).join(", ") : "")
   }, [initial])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    await onSubmit(form)
+    const tags = tagsText
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+    await onSubmit({ ...form, tags })
     if (!initial) {
       setForm(EMPTY_FORM)
+      setTagsText("")
     }
   }
 
@@ -147,6 +162,23 @@ export function EndpointForm({
             onChange={(event) => setForm({ ...form, webhook_url: event.target.value })}
           />
         </label>
+        <label className="endpoint-form__wide">
+          Alert email
+          <input
+            type="email"
+            placeholder="ops@example.com"
+            value={form.alert_email}
+            onChange={(event) => setForm({ ...form, alert_email: event.target.value })}
+          />
+        </label>
+        <label className="endpoint-form__wide">
+          Tags
+          <input
+            placeholder="production, api, critical"
+            value={tagsText}
+            onChange={(event) => setTagsText(event.target.value)}
+          />
+        </label>
         <label className="endpoint-form__check">
           <input
             type="checkbox"
@@ -154,6 +186,14 @@ export function EndpointForm({
             onChange={(event) => setForm({ ...form, is_active: event.target.checked })}
           />
           Active
+        </label>
+        <label className="endpoint-form__check">
+          <input
+            type="checkbox"
+            checked={form.is_public}
+            onChange={(event) => setForm({ ...form, is_public: event.target.checked })}
+          />
+          Public on status page
         </label>
         <label className="endpoint-form__check">
           <input

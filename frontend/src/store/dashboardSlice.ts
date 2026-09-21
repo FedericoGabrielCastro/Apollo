@@ -17,6 +17,15 @@ export type DashboardSummary = {
   alerts_failed_delivery: number
   alerts_failure_events: number
   alerts_recovery_events: number
+  open_incidents: number
+}
+
+export type DashboardOpenIncident = {
+  id: number
+  endpoint_id: number
+  endpoint_name: string
+  summary: string
+  opened_at: string
 }
 
 export type DashboardEndpointRow = {
@@ -55,6 +64,7 @@ export type DashboardData = {
     success: boolean
     created_at: string
   }>
+  open_incident_list: DashboardOpenIncident[]
 }
 
 type DashboardState = {

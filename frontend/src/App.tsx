@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { Link, Navigate, Route, Routes } from "react-router-dom"
 
 import { AlertHistory } from "./components/AlertHistory"
 import { CheckHistory } from "./components/CheckHistory"
@@ -26,6 +27,7 @@ import {
   type MonitoredEndpoint,
 } from "./store/endpointsSlice"
 import { fetchHealth } from "./store/healthSlice"
+import { fetchIncidents } from "./store/incidentsSlice"
 import "./App.css"
 
 function statusLabel(status: string | undefined) {
@@ -47,11 +49,13 @@ function AuthenticatedApp() {
     void dispatch(fetchHealth())
     void dispatch(fetchEndpoints())
     void dispatch(fetchDashboard(dashboard.hours))
+    void dispatch(fetchIncidents("open"))
   }, [dispatch, dashboard.hours])
 
   async function handleCreate(payload: EndpointInput) {
     await dispatch(createEndpoint(payload)).unwrap()
     void dispatch(fetchDashboard(dashboard.hours))
+    void dispatch(fetchIncidents("open"))
   }
 
   async function handleUpdate(payload: EndpointInput) {
@@ -59,6 +63,7 @@ function AuthenticatedApp() {
     await dispatch(updateEndpoint({ id: editing.id, payload })).unwrap()
     setEditing(null)
     void dispatch(fetchDashboard(dashboard.hours))
+    void dispatch(fetchIncidents("open"))
   }
 
   async function handleDelete(endpoint: MonitoredEndpoint) {
@@ -75,12 +80,14 @@ function AuthenticatedApp() {
     }
     await dispatch(deleteEndpoint(endpoint.id))
     void dispatch(fetchDashboard(dashboard.hours))
+    void dispatch(fetchIncidents("open"))
   }
 
   async function handleCheck(endpointId: number) {
     await dispatch(checkEndpoint(endpointId)).unwrap()
     await dispatch(fetchEndpoints())
     void dispatch(fetchDashboard(dashboard.hours))
+    void dispatch(fetchIncidents("open"))
     if (alertsOpenId === endpointId) {
       void dispatch(fetchEndpointAlerts(endpointId))
     }
@@ -112,6 +119,9 @@ function AuthenticatedApp() {
         <div className="app__header-top">
           <p className="app__brand">Apollo</p>
           <div className="app__user">
+            <Link to="/status" className="status-page__link">
+              Public status
+            </Link>
             <span>{auth.user?.username}</span>
             <button
               type="button"
@@ -205,19 +215,37 @@ function AuthenticatedApp() {
                   <div>
                     <p className="app__row-name">
                       {endpoint.name}
+                      {endpoint.open_incident && (
+                        <span className="app__badge app__badge--incident">incident</span>
+                      )}
                       {!endpoint.is_active && (
                         <span className="app__muted"> · inactive</span>
                       )}
                       {endpoint.is_active && endpoint.is_due && (
                         <span className="app__due"> · due</span>
                       )}
+                      {endpoint.is_public && (
+                        <span className="app__muted"> · public</span>
+                      )}
                       {endpoint.alert_on_failure && endpoint.webhook_url && (
                         <span className="app__muted"> · webhook</span>
+                      )}
+                      {endpoint.alert_on_failure && endpoint.alert_email && (
+                        <span className="app__muted"> · email</span>
                       )}
                     </p>
                     <p className="app__row-url">
                       {endpoint.method} {endpoint.url}
                     </p>
+                    {endpoint.tags.length > 0 && (
+                      <div className="app__tags">
+                        {endpoint.tags.map((tag) => (
+                          <span key={tag} className="app__tag">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <p className="app__row-meta">
                       every {endpoint.check_interval_minutes} min
                       {endpoint.last_alert
@@ -332,9 +360,48 @@ function AuthenticatedApp() {
   )
 }
 
+function LoginRoute() {
+  const auth = useAppSelector((state) => state.auth)
+
+  if (auth.bootstrapping) {
+    return (
+      <main className="app">
+        <p>Restoring session…</p>
+      </main>
+    )
+  }
+
+  if (auth.token && auth.user) {
+    return <Navigate to="/" replace />
+  }
+
+  return (
+    <main className="app">
+      <LoginForm />
+    </main>
+  )
+}
+
+function HomeRoute() {
+  const auth = useAppSelector((state) => state.auth)
+
+  if (auth.bootstrapping) {
+    return (
+      <main className="app">
+        <p>Restoring session…</p>
+      </main>
+    )
+  }
+
+  if (!auth.token || !auth.user) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <AuthenticatedApp />
+}
+
 function App() {
   const dispatch = useAppDispatch()
-  const auth = useAppSelector((state) => state.auth)
 
   useEffect(() => {
     void dispatch(bootstrapAuth())
@@ -348,23 +415,13 @@ function App() {
     return () => window.removeEventListener("apollo:unauthorized", onUnauthorized)
   }, [dispatch])
 
-  if (auth.bootstrapping) {
-    return (
-      <main className="app">
-        <p>Restoring session…</p>
-      </main>
-    )
-  }
-
-  if (!auth.token || !auth.user) {
-    return (
-      <main className="app">
-        <LoginForm />
-      </main>
-    )
-  }
-
-  return <AuthenticatedApp />
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginRoute />} />
+      <Route path="/" element={<HomeRoute />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
 }
 
 export default App

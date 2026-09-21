@@ -1,6 +1,19 @@
 from django.db import models
 
 
+class Tag(models.Model):
+    """Label used to group monitored endpoints."""
+
+    name = models.SlugField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class MonitoredEndpoint(models.Model):
     """An external or internal HTTP endpoint to track."""
 
@@ -9,6 +22,10 @@ class MonitoredEndpoint(models.Model):
     method = models.CharField(max_length=10, default="GET")
     expected_status = models.PositiveSmallIntegerField(default=200)
     is_active = models.BooleanField(default=True)
+    is_public = models.BooleanField(
+        default=True,
+        help_text="Include this endpoint on the public status page.",
+    )
     timeout_seconds = models.PositiveSmallIntegerField(default=5)
     check_interval_minutes = models.PositiveIntegerField(
         default=5,
@@ -18,10 +35,15 @@ class MonitoredEndpoint(models.Model):
         blank=True,
         help_text="Optional webhook notified on failure and recovery transitions.",
     )
+    alert_email = models.EmailField(
+        blank=True,
+        help_text="Optional email notified on failure and recovery transitions.",
+    )
     alert_on_failure = models.BooleanField(
         default=True,
         help_text="Send alerts when status transitions to down/error or recovers.",
     )
+    tags = models.ManyToManyField(Tag, blank=True, related_name="endpoints")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -67,6 +89,7 @@ class AlertEvent(models.Model):
 
     class Channel(models.TextChoices):
         WEBHOOK = "webhook", "Webhook"
+        EMAIL = "email", "Email"
 
     endpoint = models.ForeignKey(
         MonitoredEndpoint,
@@ -84,7 +107,7 @@ class AlertEvent(models.Model):
         choices=Channel.choices,
         default=Channel.WEBHOOK,
     )
-    target = models.URLField(blank=True)
+    target = models.CharField(max_length=255, blank=True)
     payload = models.JSONField(default=dict, blank=True)
     success = models.BooleanField(default=False)
     response_status = models.PositiveSmallIntegerField(null=True, blank=True)
@@ -96,3 +119,45 @@ class AlertEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.endpoint.name}: {self.event_type} ({self.channel})"
+
+
+class Incident(models.Model):
+    """Open/resolved outage window for an endpoint."""
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        RESOLVED = "resolved", "Resolved"
+
+    endpoint = models.ForeignKey(
+        MonitoredEndpoint,
+        on_delete=models.CASCADE,
+        related_name="incidents",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.OPEN,
+    )
+    summary = models.CharField(max_length=255)
+    opened_by_check = models.ForeignKey(
+        HealthCheckResult,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="opened_incidents",
+    )
+    resolved_by_check = models.ForeignKey(
+        HealthCheckResult,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="resolved_incidents",
+    )
+    opened_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-opened_at"]
+
+    def __str__(self) -> str:
+        return f"{self.endpoint.name}: {self.status} ({self.summary})"

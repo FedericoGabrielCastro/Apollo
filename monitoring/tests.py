@@ -151,7 +151,10 @@ def test_update_endpoint(api_client) -> None:
             "timeout_seconds": 10,
             "check_interval_minutes": 15,
             "webhook_url": "https://hooks.example.com/x",
+            "alert_email": "ops@example.com",
             "alert_on_failure": False,
+            "is_public": False,
+            "tags": ["payments", "critical"],
         },
         format="json",
     )
@@ -164,7 +167,10 @@ def test_update_endpoint(api_client) -> None:
     assert endpoint.is_active is False
     assert endpoint.check_interval_minutes == 15
     assert endpoint.webhook_url == "https://hooks.example.com/x"
+    assert endpoint.alert_email == "ops@example.com"
     assert endpoint.alert_on_failure is False
+    assert endpoint.is_public is False
+    assert set(endpoint.tags.values_list("name", flat=True)) == {"payments", "critical"}
 
 
 @pytest.mark.django_db
@@ -514,3 +520,94 @@ def test_run_check_worker_once(mock_call: MagicMock) -> None:
 
     call_command("run_check_worker", once=True, interval=5)
     mock_call.assert_called_once_with("check_endpoints", due=True)
+
+
+@pytest.mark.django_db
+@patch("monitoring.alerts.deliver_webhook")
+@patch("monitoring.services.probe_endpoint")
+def test_failure_opens_incident(mock_probe: MagicMock, mock_deliver: MagicMock) -> None:
+    from monitoring.models import Incident
+
+    endpoint = MonitoredEndpointFactory(webhook_url="https://hooks.example.com/x")
+    HealthCheckResultFactory(endpoint=endpoint, status=HealthCheckResult.Status.UP)
+    mock_probe.return_value = CheckOutcome(
+        status=HealthCheckResult.Status.DOWN,
+        status_code=500,
+        latency_ms=11.0,
+        error_message="boom",
+    )
+    mock_deliver.return_value = (True, 200, "")
+
+    run_health_check(endpoint)
+
+    incident = Incident.objects.get()
+    assert incident.status == Incident.Status.OPEN
+    assert "boom" in incident.summary
+
+
+@pytest.mark.django_db
+@patch("monitoring.alerts.deliver_email")
+@patch("monitoring.services.probe_endpoint")
+def test_email_alert_on_failure(mock_probe: MagicMock, mock_email: MagicMock) -> None:
+    from monitoring.models import AlertEvent
+
+    endpoint = MonitoredEndpointFactory(alert_email="ops@example.com", webhook_url="")
+    mock_probe.return_value = CheckOutcome(
+        status=HealthCheckResult.Status.ERROR,
+        status_code=None,
+        latency_ms=3.0,
+        error_message="timeout",
+    )
+    mock_email.return_value = (True, "")
+
+    run_health_check(endpoint)
+
+    alert = AlertEvent.objects.get()
+    assert alert.channel == AlertEvent.Channel.EMAIL
+    assert alert.target == "ops@example.com"
+
+
+@pytest.mark.django_db
+def test_public_status_endpoint(anon_client) -> None:
+    endpoint = MonitoredEndpointFactory(name="Public API", is_public=True, is_active=True)
+    HealthCheckResultFactory(endpoint=endpoint, status=HealthCheckResult.Status.UP)
+    MonitoredEndpointFactory(name="Hidden", is_public=False)
+
+    response = anon_client.get("/api/status/public/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["overall"] == "operational"
+    names = [row["name"] for row in response.data["endpoints"]]
+    assert "Public API" in names
+    assert "Hidden" not in names
+
+
+@pytest.mark.django_db
+def test_list_incidents(api_client) -> None:
+    from monitoring.factories import IncidentFactory
+    from monitoring.models import Incident
+
+    IncidentFactory(status=Incident.Status.OPEN)
+    IncidentFactory(status=Incident.Status.RESOLVED)
+
+    response = api_client.get("/api/incidents/?status=open")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 1
+    assert response.data[0]["status"] == "open"
+
+
+@pytest.mark.django_db
+def test_filter_endpoints_by_tag(api_client) -> None:
+    from monitoring.factories import TagFactory
+
+    tag = TagFactory(name="core")
+    matched = MonitoredEndpointFactory(name="Core API")
+    matched.tags.add(tag)
+    MonitoredEndpointFactory(name="Other")
+
+    response = api_client.get("/api/endpoints/?tag=core")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 1
+    assert response.data[0]["name"] == "Core API"
