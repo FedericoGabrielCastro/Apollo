@@ -101,6 +101,10 @@ type ListEntry<T> = {
   items: T[]
   loading: boolean
   error: string | null
+  count: number
+  page: number
+  page_size: number
+  total_pages: number
 }
 
 type EndpointsState = {
@@ -214,27 +218,67 @@ export const checkDueEndpoints = createAsyncThunk(
   },
 )
 
+const LIST_PAGE_SIZE = 20
+
+type PaginatedListPayload<T> = {
+  endpointId: number
+  items: T[]
+  count: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+type FetchListArg = {
+  endpointId: number
+  page?: number
+}
+
 export const fetchEndpointHistory = createAsyncThunk(
   "endpoints/fetchHistory",
-  async (endpointId: number): Promise<{ endpointId: number; items: HealthCheckResult[] }> => {
-    const response = await apiFetch(`/api/endpoints/${endpointId}/checks/`)
+  async ({
+    endpointId,
+    page = 1,
+  }: FetchListArg): Promise<PaginatedListPayload<HealthCheckResult>> => {
+    const response = await apiFetch(
+      `/api/endpoints/${endpointId}/checks/?page=${page}&page_size=${LIST_PAGE_SIZE}`,
+    )
     if (!response.ok) {
       throw new Error(await readError(response, "Failed to load history"))
     }
-    const items: HealthCheckResult[] = await response.json()
-    return { endpointId, items }
+    const body = await response.json()
+    return {
+      endpointId,
+      items: body.results as HealthCheckResult[],
+      count: body.count,
+      page: body.page,
+      page_size: body.page_size,
+      total_pages: body.total_pages,
+    }
   },
 )
 
 export const fetchEndpointAlerts = createAsyncThunk(
   "endpoints/fetchAlerts",
-  async (endpointId: number): Promise<{ endpointId: number; items: AlertEvent[] }> => {
-    const response = await apiFetch(`/api/endpoints/${endpointId}/alerts/`)
+  async ({
+    endpointId,
+    page = 1,
+  }: FetchListArg): Promise<PaginatedListPayload<AlertEvent>> => {
+    const response = await apiFetch(
+      `/api/endpoints/${endpointId}/alerts/?page=${page}&page_size=${LIST_PAGE_SIZE}`,
+    )
     if (!response.ok) {
       throw new Error(await readError(response, "Failed to load alerts"))
     }
-    const items: AlertEvent[] = await response.json()
-    return { endpointId, items }
+    const body = await response.json()
+    return {
+      endpointId,
+      items: body.results as AlertEvent[],
+      count: body.count,
+      page: body.page,
+      page_size: body.page_size,
+      total_pages: body.total_pages,
+    }
   },
 )
 
@@ -374,11 +418,16 @@ const endpointsSlice = createSlice({
         state.error = action.error.message ?? "Unknown error"
       })
       .addCase(fetchEndpointHistory.pending, (state, action) => {
-        const endpointId = action.meta.arg
+        const { endpointId, page } = action.meta.arg
+        const existing = state.historyById[endpointId]
         state.historyById[endpointId] = {
-          items: state.historyById[endpointId]?.items ?? [],
+          items: existing?.items ?? [],
           loading: true,
           error: null,
+          count: existing?.count ?? 0,
+          page: page ?? existing?.page ?? 1,
+          page_size: existing?.page_size ?? LIST_PAGE_SIZE,
+          total_pages: existing?.total_pages ?? 1,
         }
       })
       .addCase(fetchEndpointHistory.fulfilled, (state, action) => {
@@ -386,22 +435,36 @@ const endpointsSlice = createSlice({
           items: action.payload.items,
           loading: false,
           error: null,
+          count: action.payload.count,
+          page: action.payload.page,
+          page_size: action.payload.page_size,
+          total_pages: action.payload.total_pages,
         }
       })
       .addCase(fetchEndpointHistory.rejected, (state, action) => {
-        const endpointId = action.meta.arg
+        const { endpointId } = action.meta.arg
+        const existing = state.historyById[endpointId]
         state.historyById[endpointId] = {
-          items: state.historyById[endpointId]?.items ?? [],
+          items: existing?.items ?? [],
           loading: false,
           error: action.error.message ?? "Unknown error",
+          count: existing?.count ?? 0,
+          page: existing?.page ?? 1,
+          page_size: existing?.page_size ?? LIST_PAGE_SIZE,
+          total_pages: existing?.total_pages ?? 1,
         }
       })
       .addCase(fetchEndpointAlerts.pending, (state, action) => {
-        const endpointId = action.meta.arg
+        const { endpointId, page } = action.meta.arg
+        const existing = state.alertsById[endpointId]
         state.alertsById[endpointId] = {
-          items: state.alertsById[endpointId]?.items ?? [],
+          items: existing?.items ?? [],
           loading: true,
           error: null,
+          count: existing?.count ?? 0,
+          page: page ?? existing?.page ?? 1,
+          page_size: existing?.page_size ?? LIST_PAGE_SIZE,
+          total_pages: existing?.total_pages ?? 1,
         }
       })
       .addCase(fetchEndpointAlerts.fulfilled, (state, action) => {
@@ -409,18 +472,27 @@ const endpointsSlice = createSlice({
           items: action.payload.items,
           loading: false,
           error: null,
+          count: action.payload.count,
+          page: action.payload.page,
+          page_size: action.payload.page_size,
+          total_pages: action.payload.total_pages,
         }
         const item = state.items.find((endpoint) => endpoint.id === action.payload.endpointId)
-        if (item) {
+        if (item && action.payload.page === 1) {
           item.last_alert = action.payload.items[0] ?? null
         }
       })
       .addCase(fetchEndpointAlerts.rejected, (state, action) => {
-        const endpointId = action.meta.arg
+        const { endpointId } = action.meta.arg
+        const existing = state.alertsById[endpointId]
         state.alertsById[endpointId] = {
-          items: state.alertsById[endpointId]?.items ?? [],
+          items: existing?.items ?? [],
           loading: false,
           error: action.error.message ?? "Unknown error",
+          count: existing?.count ?? 0,
+          page: existing?.page ?? 1,
+          page_size: existing?.page_size ?? LIST_PAGE_SIZE,
+          total_pages: existing?.total_pages ?? 1,
         }
       })
       .addCase(testEndpointWebhook.pending, (state, action) => {

@@ -166,6 +166,7 @@ APOLLO_DEMO_USERNAME = env("APOLLO_DEMO_USERNAME", "apollo") or "apollo"
 APOLLO_DEMO_PASSWORD = env("APOLLO_DEMO_PASSWORD", "apollo") or "apollo"
 APOLLO_SEED_ON_STARTUP = env_bool("APOLLO_SEED_ON_STARTUP", False)
 CHECK_INTERVAL_SECONDS = int(env("CHECK_INTERVAL_SECONDS", "60") or "60")
+CHECK_RETENTION_DAYS = int(env("CHECK_RETENTION_DAYS", "30") or "30")
 
 _email_backend = (
     env("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")

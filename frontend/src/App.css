@@ -382,6 +382,65 @@
   margin-bottom: 1.25rem;
 }
 
+.dashboard__charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.dashboard__chart-block h3 {
+  margin: 0 0 0.5rem;
+}
+
+.dashboard__chart {
+  display: block;
+  width: 100%;
+  max-width: 20rem;
+  height: auto;
+  border: 1px solid rgba(26, 31, 36, 0.1);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.dashboard__chart-bar {
+  fill: rgba(31, 107, 69, 0.75);
+}
+
+.dashboard__chart-bar--uptime {
+  fill: rgba(31, 107, 69, 0.75);
+}
+
+.dashboard__chart-bar--latency {
+  fill: rgba(74, 85, 96, 0.65);
+}
+
+.dashboard__exports {
+  margin-bottom: 1.25rem;
+}
+
+.dashboard__exports h3 {
+  margin: 0 0 0.5rem;
+}
+
+.dashboard__export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.pagination__status {
+  color: #5a6670;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
 .dashboard__label {
   margin: 0 0 0.2rem;
   color: #5a6670;
@@ -552,6 +611,7 @@
   }
 
   .dashboard__stats,
+  .dashboard__charts,
   .dashboard__tables {
     grid-template-columns: 1fr;
   }

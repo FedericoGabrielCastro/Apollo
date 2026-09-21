@@ -38,6 +38,11 @@ class Command(BaseCommand):
             except Exception as exc:  # noqa: BLE001 - keep worker alive
                 self.stderr.write(self.style.ERROR(f"Check pass failed: {exc}"))
 
+            try:
+                call_command("prune_checks")
+            except Exception as exc:  # noqa: BLE001 - keep worker alive
+                self.stderr.write(self.style.ERROR(f"Prune pass failed: {exc}"))
+
             if options["once"]:
                 break
 

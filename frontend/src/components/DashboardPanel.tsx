@@ -1,5 +1,12 @@
+import { useState } from "react"
+
+import { apiFetch, readError } from "../api/client"
 import { useAppDispatch, useAppSelector } from "../store/hooks"
-import { fetchDashboard, setDashboardHours } from "../store/dashboardSlice"
+import {
+  fetchDashboard,
+  setDashboardHours,
+  type DashboardSeriesBucket,
+} from "../store/dashboardSlice"
 
 function formatPercent(value: number | null) {
   if (value == null) return "n/a"
@@ -15,10 +22,118 @@ function formatTime(value: string) {
   return new Date(value).toLocaleString()
 }
 
+const CHART_WIDTH = 320
+const CHART_HEIGHT = 72
+
+function UptimeChart({ series }: { series: DashboardSeriesBucket[] }) {
+  if (series.length === 0) {
+    return <p className="check-history__empty">No check data in this window.</p>
+  }
+
+  const barWidth = CHART_WIDTH / series.length
+
+  return (
+    <svg
+      viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+      className="dashboard__chart"
+      role="img"
+      aria-label="Uptime by hour"
+    >
+      {series.map((bucket, index) => {
+        const pct = bucket.uptime_percent ?? 0
+        const barHeight = (pct / 100) * (CHART_HEIGHT - 4)
+        return (
+          <rect
+            key={bucket.bucket_start}
+            x={index * barWidth + 1}
+            y={CHART_HEIGHT - barHeight}
+            width={Math.max(barWidth - 2, 1)}
+            height={barHeight}
+            className="dashboard__chart-bar dashboard__chart-bar--uptime"
+          >
+            <title>
+              {formatTime(bucket.bucket_start)}: {formatPercent(bucket.uptime_percent)}
+            </title>
+          </rect>
+        )
+      })}
+    </svg>
+  )
+}
+
+function LatencyChart({ series }: { series: DashboardSeriesBucket[] }) {
+  const values = series
+    .map((bucket) => bucket.avg_latency_ms)
+    .filter((value): value is number => value != null)
+
+  if (values.length === 0) {
+    return <p className="check-history__empty">No latency data in this window.</p>
+  }
+
+  const max = Math.max(...values, 1)
+  const barWidth = CHART_WIDTH / series.length
+
+  return (
+    <svg
+      viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+      className="dashboard__chart"
+      role="img"
+      aria-label="Average latency by hour"
+    >
+      {series.map((bucket, index) => {
+        if (bucket.avg_latency_ms == null) return null
+        const barHeight = (bucket.avg_latency_ms / max) * (CHART_HEIGHT - 4)
+        return (
+          <rect
+            key={bucket.bucket_start}
+            x={index * barWidth + 1}
+            y={CHART_HEIGHT - barHeight}
+            width={Math.max(barWidth - 2, 1)}
+            height={barHeight}
+            className="dashboard__chart-bar dashboard__chart-bar--latency"
+          >
+            <title>
+              {formatTime(bucket.bucket_start)}: {formatLatency(bucket.avg_latency_ms)}
+            </title>
+          </rect>
+        )
+      })}
+    </svg>
+  )
+}
+
+async function downloadExport(path: string, filename: string) {
+  const response = await apiFetch(path)
+  if (!response.ok) {
+    throw new Error(await readError(response, "Export failed"))
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 export function DashboardPanel() {
   const dispatch = useAppDispatch()
   const { data, loading, error, hours } = useAppSelector((state) => state.dashboard)
   const summary = data?.summary
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState<string | null>(null)
+
+  async function handleExport(path: string, filename: string, key: string) {
+    setExportError(null)
+    setExporting(key)
+    try {
+      await downloadExport(path, filename)
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Export failed")
+    } finally {
+      setExporting(null)
+    }
+  }
 
   return (
     <section className="dashboard">
@@ -89,6 +204,64 @@ export function DashboardPanel() {
                 {summary.endpoints_active}/{summary.endpoints_total}
               </p>
             </div>
+          </div>
+
+          {data?.series && data.series.length > 0 && (
+            <div className="dashboard__charts">
+              <div className="dashboard__chart-block">
+                <h3>Uptime trend</h3>
+                <UptimeChart series={data.series} />
+              </div>
+              <div className="dashboard__chart-block">
+                <h3>Latency trend</h3>
+                <LatencyChart series={data.series} />
+              </div>
+            </div>
+          )}
+
+          <div className="dashboard__exports">
+            <h3>Exports</h3>
+            <div className="dashboard__export-actions">
+              <button
+                type="button"
+                className="app__button"
+                disabled={exporting != null}
+                onClick={() =>
+                  void handleExport(
+                    `/api/exports/checks.csv?hours=${hours}`,
+                    `checks-${hours}h.csv`,
+                    "checks",
+                  )
+                }
+              >
+                {exporting === "checks" ? "Downloading…" : "Checks CSV"}
+              </button>
+              <button
+                type="button"
+                className="app__button"
+                disabled={exporting != null}
+                onClick={() =>
+                  void handleExport(
+                    `/api/exports/alerts.csv?hours=${hours}`,
+                    `alerts-${hours}h.csv`,
+                    "alerts",
+                  )
+                }
+              >
+                {exporting === "alerts" ? "Downloading…" : "Alerts CSV"}
+              </button>
+              <button
+                type="button"
+                className="app__button"
+                disabled={exporting != null}
+                onClick={() =>
+                  void handleExport("/api/exports/incidents.csv", "incidents.csv", "incidents")
+                }
+              >
+                {exporting === "incidents" ? "Downloading…" : "Incidents CSV"}
+              </button>
+            </div>
+            {exportError && <p className="app__error">{exportError}</p>}
           </div>
 
           <div className="dashboard__tables">

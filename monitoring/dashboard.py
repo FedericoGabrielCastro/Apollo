@@ -6,6 +6,7 @@ from typing import Any
 from django.db.models import Avg, Count, Q
 from django.utils import timezone
 
+from monitoring.metrics import build_check_series
 from monitoring.models import AlertEvent, HealthCheckResult, Incident, MonitoredEndpoint
 from monitoring.services import due_endpoints
 
@@ -21,7 +22,13 @@ def build_dashboard(*, hours: int = 24) -> dict[str, Any]:
     alerting = [
         endpoint
         for endpoint in endpoints
-        if endpoint.alert_on_failure and (endpoint.webhook_url or endpoint.alert_email)
+        if endpoint.alert_on_failure
+        and (
+            endpoint.webhook_url
+            or endpoint.alert_email
+            or endpoint.discord_webhook_url
+            or endpoint.slack_webhook_url
+        )
     ]
     open_incidents = Incident.objects.filter(status=Incident.Status.OPEN).count()
 
@@ -156,4 +163,5 @@ def build_dashboard(*, hours: int = 24) -> dict[str, Any]:
             .select_related("endpoint")
             .order_by("-opened_at")[:10]
         ],
+        "series": build_check_series(hours=hours),
     }

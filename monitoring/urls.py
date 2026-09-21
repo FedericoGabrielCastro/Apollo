@@ -5,6 +5,7 @@ from monitoring.auth_views import LoginView, LogoutView, MeView
 from monitoring.views import (
     AlertEventViewSet,
     DashboardView,
+    ExportView,
     HealthCheckResultViewSet,
     HealthView,
     IncidentViewSet,
@@ -26,6 +27,7 @@ urlpatterns = [
     path("status/public/", PublicStatusView.as_view(), name="public-status"),
     path("status/config/", StatusPageConfigView.as_view(), name="status-config"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
+    path("exports/<str:resource>.csv", ExportView.as_view(), name="exports-csv"),
     path("auth/login/", LoginView.as_view(), name="auth-login"),
     path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
     path("auth/me/", MeView.as_view(), name="auth-me"),

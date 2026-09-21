@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -8,7 +10,9 @@ from rest_framework.views import APIView
 
 from monitoring.alerts import build_alert_payload, deliver_webhook
 from monitoring.dashboard import build_dashboard
+from monitoring.exports import csv_response
 from monitoring.models import AlertEvent, HealthCheckResult, Incident, MonitoredEndpoint, StatusPageConfig, Tag
+from monitoring.pagination_utils import paginate_queryset
 from monitoring.serializers import (
     AlertEventSerializer,
     HealthCheckResultSerializer,
@@ -114,20 +118,35 @@ class MonitoredEndpointViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="checks")
     def checks(self, request: Request, pk: str | None = None) -> Response:
         endpoint = self.get_object()
-        results = endpoint.checks.all()[:50]
-        return Response(HealthCheckResultSerializer(results, many=True).data)
+        page = paginate_queryset(request, endpoint.checks.all())
+        return Response(
+            {
+                **page,
+                "results": HealthCheckResultSerializer(page["results"], many=True).data,
+            }
+        )
 
     @action(detail=True, methods=["get"], url_path="alerts")
     def alerts(self, request: Request, pk: str | None = None) -> Response:
         endpoint = self.get_object()
-        results = endpoint.alerts.all()[:50]
-        return Response(AlertEventSerializer(results, many=True).data)
+        page = paginate_queryset(request, endpoint.alerts.all())
+        return Response(
+            {
+                **page,
+                "results": AlertEventSerializer(page["results"], many=True).data,
+            }
+        )
 
     @action(detail=True, methods=["get"], url_path="incidents")
     def incidents(self, request: Request, pk: str | None = None) -> Response:
         endpoint = self.get_object()
-        results = endpoint.incidents.all()[:50]
-        return Response(IncidentSerializer(results, many=True).data)
+        page = paginate_queryset(request, endpoint.incidents.all())
+        return Response(
+            {
+                **page,
+                "results": IncidentSerializer(page["results"], many=True).data,
+            }
+        )
 
     @action(detail=True, methods=["post"], url_path="test-webhook")
     def test_webhook(self, request: Request, pk: str | None = None) -> Response:
@@ -220,3 +239,123 @@ class TagViewSet(viewsets.ModelViewSet):
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
     http_method_names = ["get", "post", "delete", "head", "options"]
+
+
+class ExportView(APIView):
+    """CSV downloads for checks, alerts, and incidents."""
+
+    def get(self, request: Request, resource: str) -> Response:
+        try:
+            hours = int(request.query_params.get("hours", 24 * 7))
+        except (TypeError, ValueError):
+            hours = 24 * 7
+        hours = max(1, min(hours, 24 * 90))
+        since = timezone.now() - timedelta(hours=hours)
+        endpoint_id = request.query_params.get("endpoint_id")
+
+        if resource == "checks":
+            queryset = HealthCheckResult.objects.select_related("endpoint").filter(
+                checked_at__gte=since
+            )
+            if endpoint_id:
+                queryset = queryset.filter(endpoint_id=endpoint_id)
+            rows = (
+                (
+                    item.id,
+                    item.endpoint_id,
+                    item.endpoint.name,
+                    item.status,
+                    item.status_code if item.status_code is not None else "",
+                    item.latency_ms if item.latency_ms is not None else "",
+                    item.error_message,
+                    item.checked_at.isoformat(),
+                )
+                for item in queryset.order_by("-checked_at")[:5000]
+            )
+            return csv_response(
+                "apollo-checks.csv",
+                [
+                    "id",
+                    "endpoint_id",
+                    "endpoint_name",
+                    "status",
+                    "status_code",
+                    "latency_ms",
+                    "error_message",
+                    "checked_at",
+                ],
+                rows,
+            )
+
+        if resource == "alerts":
+            queryset = AlertEvent.objects.select_related("endpoint").filter(
+                created_at__gte=since
+            )
+            if endpoint_id:
+                queryset = queryset.filter(endpoint_id=endpoint_id)
+            rows = (
+                (
+                    item.id,
+                    item.endpoint_id,
+                    item.endpoint.name,
+                    item.event_type,
+                    item.channel,
+                    item.target,
+                    item.success,
+                    item.response_status if item.response_status is not None else "",
+                    item.error_message,
+                    item.created_at.isoformat(),
+                )
+                for item in queryset.order_by("-created_at")[:5000]
+            )
+            return csv_response(
+                "apollo-alerts.csv",
+                [
+                    "id",
+                    "endpoint_id",
+                    "endpoint_name",
+                    "event_type",
+                    "channel",
+                    "target",
+                    "success",
+                    "response_status",
+                    "error_message",
+                    "created_at",
+                ],
+                rows,
+            )
+
+        if resource == "incidents":
+            queryset = Incident.objects.select_related("endpoint").all()
+            if endpoint_id:
+                queryset = queryset.filter(endpoint_id=endpoint_id)
+            status_filter = request.query_params.get("status")
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+            rows = (
+                (
+                    item.id,
+                    item.endpoint_id,
+                    item.endpoint.name,
+                    item.status,
+                    item.summary,
+                    item.opened_at.isoformat(),
+                    item.resolved_at.isoformat() if item.resolved_at else "",
+                )
+                for item in queryset.order_by("-opened_at")[:5000]
+            )
+            return csv_response(
+                "apollo-incidents.csv",
+                [
+                    "id",
+                    "endpoint_id",
+                    "endpoint_name",
+                    "status",
+                    "summary",
+                    "opened_at",
+                    "resolved_at",
+                ],
+                rows,
+            )
+
+        return Response({"detail": "Unknown export resource."}, status=status.HTTP_404_NOT_FOUND)
