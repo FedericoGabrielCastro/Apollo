@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from monitoring.models import HealthCheckResult, MonitoredEndpoint
+from monitoring.models import AlertEvent, HealthCheckResult, MonitoredEndpoint
 from monitoring.services import is_endpoint_due
 
 HTTP_METHODS = ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE")
@@ -21,10 +21,31 @@ class HealthCheckResultSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class AlertEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AlertEvent
+        fields = [
+            "id",
+            "endpoint",
+            "check_result",
+            "event_type",
+            "channel",
+            "target",
+            "payload",
+            "success",
+            "response_status",
+            "error_message",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
 class MonitoredEndpointSerializer(serializers.ModelSerializer):
     last_check = serializers.SerializerMethodField()
+    last_alert = serializers.SerializerMethodField()
     is_due = serializers.SerializerMethodField()
     method = serializers.CharField(default="GET", max_length=10)
+    webhook_url = serializers.URLField(required=False, allow_blank=True)
 
     class Meta:
         model = MonitoredEndpoint
@@ -37,12 +58,22 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
             "is_active",
             "timeout_seconds",
             "check_interval_minutes",
+            "webhook_url",
+            "alert_on_failure",
             "created_at",
             "updated_at",
             "last_check",
+            "last_alert",
             "is_due",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "last_check", "is_due"]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "last_check",
+            "last_alert",
+            "is_due",
+        ]
 
     def validate_method(self, value: str) -> str:
         method = value.upper()
@@ -79,6 +110,16 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
             return None
         return HealthCheckResultSerializer(check).data
 
+    def get_last_alert(self, obj: MonitoredEndpoint) -> dict | None:
+        alert = obj.alerts.order_by("-created_at").first()
+        if alert is None:
+            return None
+        return AlertEventSerializer(alert).data
+
     def get_is_due(self, obj: MonitoredEndpoint) -> bool:
-        last = obj.checks.order_by("-checked_at").values_list("checked_at", flat=True).first()
+        last = (
+            obj.checks.order_by("-checked_at")
+            .values_list("checked_at", flat=True)
+            .first()
+        )
         return is_endpoint_due(obj, last_checked_at=last)

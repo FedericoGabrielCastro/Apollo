@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 
+import { AlertHistory } from "./components/AlertHistory"
 import { CheckHistory } from "./components/CheckHistory"
 import { EndpointForm } from "./components/EndpointForm"
 import { useAppDispatch, useAppSelector } from "./store/hooks"
@@ -8,8 +9,10 @@ import {
   checkEndpoint,
   createEndpoint,
   deleteEndpoint,
+  fetchEndpointAlerts,
   fetchEndpointHistory,
   fetchEndpoints,
+  testEndpointWebhook,
   updateEndpoint,
   type EndpointInput,
   type MonitoredEndpoint,
@@ -28,6 +31,7 @@ function App() {
   const endpoints = useAppSelector((state) => state.endpoints)
   const [editing, setEditing] = useState<MonitoredEndpoint | null>(null)
   const [historyOpenId, setHistoryOpenId] = useState<number | null>(null)
+  const [alertsOpenId, setAlertsOpenId] = useState<number | null>(null)
 
   useEffect(() => {
     void dispatch(fetchHealth())
@@ -53,7 +57,18 @@ function App() {
     if (historyOpenId === endpoint.id) {
       setHistoryOpenId(null)
     }
+    if (alertsOpenId === endpoint.id) {
+      setAlertsOpenId(null)
+    }
     await dispatch(deleteEndpoint(endpoint.id))
+  }
+
+  async function handleCheck(endpointId: number) {
+    await dispatch(checkEndpoint(endpointId)).unwrap()
+    await dispatch(fetchEndpoints())
+    if (alertsOpenId === endpointId) {
+      void dispatch(fetchEndpointAlerts(endpointId))
+    }
   }
 
   function toggleHistory(endpointId: number) {
@@ -65,6 +80,15 @@ function App() {
     void dispatch(fetchEndpointHistory(endpointId))
   }
 
+  function toggleAlerts(endpointId: number) {
+    if (alertsOpenId === endpointId) {
+      setAlertsOpenId(null)
+      return
+    }
+    setAlertsOpenId(endpointId)
+    void dispatch(fetchEndpointAlerts(endpointId))
+  }
+
   const dueCount = endpoints.items.filter((item) => item.is_active && item.is_due).length
 
   return (
@@ -73,7 +97,7 @@ function App() {
         <p className="app__brand">Apollo</p>
         <h1>API Health Monitor</h1>
         <p className="app__lede">
-          Add endpoints, probe them on a schedule, and review check history.
+          Probe endpoints on a schedule and webhook on failure or recovery.
         </p>
       </header>
 
@@ -140,8 +164,11 @@ function App() {
               : "app__pill"
             const checking = endpoints.checkingId === endpoint.id
             const deleting = endpoints.deletingId === endpoint.id
+            const testingWebhook = endpoints.testingWebhookId === endpoint.id
             const historyOpen = historyOpenId === endpoint.id
+            const alertsOpen = alertsOpenId === endpoint.id
             const history = endpoints.historyById[endpoint.id]
+            const alerts = endpoints.alertsById[endpoint.id]
 
             return (
               <li key={endpoint.id} className="app__row-block">
@@ -155,12 +182,18 @@ function App() {
                       {endpoint.is_active && endpoint.is_due && (
                         <span className="app__due"> · due</span>
                       )}
+                      {endpoint.alert_on_failure && endpoint.webhook_url && (
+                        <span className="app__muted"> · webhook</span>
+                      )}
                     </p>
                     <p className="app__row-url">
                       {endpoint.method} {endpoint.url}
                     </p>
                     <p className="app__row-meta">
                       every {endpoint.check_interval_minutes} min
+                      {endpoint.last_alert
+                        ? ` · last alert ${endpoint.last_alert.event_type}`
+                        : ""}
                     </p>
                     <p className={pillClass}>
                       {statusLabel(last?.status)}
@@ -173,7 +206,7 @@ function App() {
                       type="button"
                       className="app__button"
                       disabled={checking || !endpoint.is_active}
-                      onClick={() => void dispatch(checkEndpoint(endpoint.id))}
+                      onClick={() => void handleCheck(endpoint.id)}
                     >
                       {checking ? "Checking…" : "Check"}
                     </button>
@@ -184,6 +217,22 @@ function App() {
                       onClick={() => toggleHistory(endpoint.id)}
                     >
                       {historyOpen ? "Hide history" : "History"}
+                    </button>
+                    <button
+                      type="button"
+                      className="app__button"
+                      aria-expanded={alertsOpen}
+                      onClick={() => toggleAlerts(endpoint.id)}
+                    >
+                      {alertsOpen ? "Hide alerts" : "Alerts"}
+                    </button>
+                    <button
+                      type="button"
+                      className="app__button"
+                      disabled={!endpoint.webhook_url || testingWebhook}
+                      onClick={() => void dispatch(testEndpointWebhook(endpoint.id))}
+                    >
+                      {testingWebhook ? "Testing…" : "Test webhook"}
                     </button>
                     <button
                       type="button"
@@ -221,6 +270,27 @@ function App() {
                       items={history?.items ?? []}
                       loading={history?.loading ?? true}
                       error={history?.error ?? null}
+                    />
+                  </div>
+                )}
+
+                {alertsOpen && (
+                  <div className="app__history">
+                    <div className="app__history-head">
+                      <h3>Alert events</h3>
+                      <button
+                        type="button"
+                        className="app__button"
+                        disabled={alerts?.loading}
+                        onClick={() => void dispatch(fetchEndpointAlerts(endpoint.id))}
+                      >
+                        {alerts?.loading ? "Refreshing…" : "Refresh alerts"}
+                      </button>
+                    </div>
+                    <AlertHistory
+                      items={alerts?.items ?? []}
+                      loading={alerts?.loading ?? true}
+                      error={alerts?.error ?? null}
                     />
                   </div>
                 )}

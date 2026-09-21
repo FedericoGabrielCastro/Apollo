@@ -13,6 +13,8 @@ const EMPTY_FORM: EndpointInput = {
   is_active: true,
   timeout_seconds: 5,
   check_interval_minutes: 5,
+  webhook_url: "",
+  alert_on_failure: true,
 }
 
 type EndpointFormProps = {
@@ -31,6 +33,8 @@ function toInput(endpoint: MonitoredEndpoint): EndpointInput {
     is_active: endpoint.is_active,
     timeout_seconds: endpoint.timeout_seconds,
     check_interval_minutes: endpoint.check_interval_minutes,
+    webhook_url: endpoint.webhook_url,
+    alert_on_failure: endpoint.alert_on_failure,
   }
 }
 
@@ -134,6 +138,15 @@ export function EndpointForm({
             }
           />
         </label>
+        <label className="endpoint-form__wide">
+          Webhook URL
+          <input
+            type="url"
+            placeholder="https://hooks.example.com/apollo"
+            value={form.webhook_url}
+            onChange={(event) => setForm({ ...form, webhook_url: event.target.value })}
+          />
+        </label>
         <label className="endpoint-form__check">
           <input
             type="checkbox"
@@ -141,6 +154,16 @@ export function EndpointForm({
             onChange={(event) => setForm({ ...form, is_active: event.target.checked })}
           />
           Active
+        </label>
+        <label className="endpoint-form__check">
+          <input
+            type="checkbox"
+            checked={form.alert_on_failure}
+            onChange={(event) =>
+              setForm({ ...form, alert_on_failure: event.target.checked })
+            }
+          />
+          Alert on failure / recovery
         </label>
       </div>
 

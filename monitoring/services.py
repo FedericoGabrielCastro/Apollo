@@ -8,6 +8,7 @@ import httpx
 from django.db.models import Max, QuerySet
 from django.utils import timezone
 
+from monitoring.alerts import dispatch_alerts_for_result
 from monitoring.models import HealthCheckResult, MonitoredEndpoint
 
 
@@ -56,15 +57,17 @@ def probe_endpoint(endpoint: MonitoredEndpoint) -> CheckOutcome:
 
 
 def run_health_check(endpoint: MonitoredEndpoint) -> HealthCheckResult:
-    """Probe an endpoint and persist the result."""
+    """Probe an endpoint, persist the result, and dispatch transition alerts."""
     outcome = probe_endpoint(endpoint)
-    return HealthCheckResult.objects.create(
+    result = HealthCheckResult.objects.create(
         endpoint=endpoint,
         status=outcome.status,
         status_code=outcome.status_code,
         latency_ms=outcome.latency_ms,
         error_message=outcome.error_message,
     )
+    dispatch_alerts_for_result(endpoint, result)
+    return result
 
 
 def is_endpoint_due(
@@ -78,7 +81,11 @@ def is_endpoint_due(
         now = timezone.now()
 
     if last_checked_at is None:
-        latest = endpoint.checks.order_by("-checked_at").values_list("checked_at", flat=True).first()
+        latest = (
+            endpoint.checks.order_by("-checked_at")
+            .values_list("checked_at", flat=True)
+            .first()
+        )
         last_checked_at = latest
 
     if last_checked_at is None:
@@ -109,4 +116,7 @@ def due_endpoints(*, include_inactive: bool = False) -> list[MonitoredEndpoint]:
 
 def run_due_checks(*, include_inactive: bool = False) -> list[HealthCheckResult]:
     """Probe every due endpoint and return the created results."""
-    return [run_health_check(endpoint) for endpoint in due_endpoints(include_inactive=include_inactive)]
+    return [
+        run_health_check(endpoint)
+        for endpoint in due_endpoints(include_inactive=include_inactive)
+    ]
