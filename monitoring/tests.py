@@ -113,3 +113,80 @@ def test_check_endpoints_command(mock_probe: MagicMock) -> None:
     call_command("check_endpoints")
 
     assert HealthCheckResult.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_create_endpoint() -> None:
+    client = APIClient()
+    response = client.post(
+        "/api/endpoints/",
+        {
+            "name": "Payments",
+            "url": "https://example.com/health",
+            "method": "get",
+            "expected_status": 200,
+            "is_active": True,
+            "timeout_seconds": 5,
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data["method"] == "GET"
+    assert MonitoredEndpoint.objects.filter(name="Payments").exists()
+
+
+@pytest.mark.django_db
+def test_update_endpoint() -> None:
+    endpoint = MonitoredEndpointFactory(name="Old")
+    client = APIClient()
+
+    response = client.put(
+        f"/api/endpoints/{endpoint.id}/",
+        {
+            "name": "New",
+            "url": endpoint.url,
+            "method": "HEAD",
+            "expected_status": 204,
+            "is_active": False,
+            "timeout_seconds": 10,
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    endpoint.refresh_from_db()
+    assert endpoint.name == "New"
+    assert endpoint.method == "HEAD"
+    assert endpoint.expected_status == 204
+    assert endpoint.is_active is False
+
+
+@pytest.mark.django_db
+def test_delete_endpoint() -> None:
+    endpoint = MonitoredEndpointFactory()
+    client = APIClient()
+
+    response = client.delete(f"/api/endpoints/{endpoint.id}/")
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert not MonitoredEndpoint.objects.filter(id=endpoint.id).exists()
+
+
+@pytest.mark.django_db
+def test_create_endpoint_rejects_invalid_method() -> None:
+    client = APIClient()
+    response = client.post(
+        "/api/endpoints/",
+        {
+            "name": "Bad",
+            "url": "https://example.com/health",
+            "method": "TRACE",
+            "expected_status": 200,
+            "is_active": True,
+            "timeout_seconds": 5,
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
