@@ -8,7 +8,7 @@ Django + React API Health Monitor (monolith).
 - **Frontend:** React + Vite + Redux Toolkit + React Router (pnpm)
 - **Data:** SQLite (local) or PostgreSQL (`DATABASE_URL`)
 - **Ops:** Docker Compose (`db` + `web` + `worker`), GitHub Actions CI
-- **Product:** due checks, assertions, SSL, mute windows, probe auth, failure threshold, Discord/Slack, status branding, incidents, tags, dashboard
+- **Product:** due checks, assertions, SSL, mute, probe auth, thresholds, Discord/Slack, status branding, charts, CSV export, retention, incidents, tags, dashboard
 
 ## Quick start (local)
 
@@ -47,7 +47,8 @@ docker compose up --build
 | Alerts | Transition after N failures; muted while `mute_alerts_until` is future |
 | Incidents | Auto-open after threshold, auto-resolve on recovery |
 | Status page | Public `/status` + branding via `/api/status/config/` |
-| Dashboard | Uptime, latency, due, open incidents |
+| Dashboard | Uptime, latency, due, open incidents, hourly charts, CSV export |
+| Retention | `prune_checks` / worker deletes checks older than `CHECK_RETENTION_DAYS` |
 
 ## Key API routes
 
@@ -56,6 +57,7 @@ docker compose up --build
 | GET | `/api/health/` | public |
 | GET | `/api/status/public/` | public |
 | GET/PATCH | `/api/status/config/` | token |
+| GET | `/api/exports/{checks\|alerts\|incidents}.csv` | token |
 | POST | `/api/auth/login/` | public |
 | GET | `/api/dashboard/` | token |
 | CRUD | `/api/endpoints/` | token |
@@ -73,6 +75,7 @@ See `.env.example` for full list (`DATABASE_URL`, `CHECK_INTERVAL_SECONDS`, `EMA
 poetry run pytest
 poetry run python manage.py check_endpoints --due
 poetry run python manage.py run_check_worker --once
+poetry run python manage.py prune_checks --dry-run
 pnpm --dir frontend build
 docker compose up --build
 ```

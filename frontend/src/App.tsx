@@ -90,7 +90,8 @@ function AuthenticatedApp() {
     void dispatch(fetchDashboard(dashboard.hours))
     void dispatch(fetchIncidents("open"))
     if (alertsOpenId === endpointId) {
-      void dispatch(fetchEndpointAlerts(endpointId))
+      const alertsPage = endpoints.alertsById[endpointId]?.page ?? 1
+      void dispatch(fetchEndpointAlerts({ endpointId, page: alertsPage }))
     }
   }
 
@@ -100,7 +101,7 @@ function AuthenticatedApp() {
       return
     }
     setHistoryOpenId(endpointId)
-    void dispatch(fetchEndpointHistory(endpointId))
+    void dispatch(fetchEndpointHistory({ endpointId }))
   }
 
   function toggleAlerts(endpointId: number) {
@@ -109,7 +110,15 @@ function AuthenticatedApp() {
       return
     }
     setAlertsOpenId(endpointId)
-    void dispatch(fetchEndpointAlerts(endpointId))
+    void dispatch(fetchEndpointAlerts({ endpointId }))
+  }
+
+  function handleHistoryPageChange(endpointId: number, page: number) {
+    void dispatch(fetchEndpointHistory({ endpointId, page }))
+  }
+
+  function handleAlertsPageChange(endpointId: number, page: number) {
+    void dispatch(fetchEndpointAlerts({ endpointId, page }))
   }
 
   const dueCount = endpoints.items.filter((item) => item.is_active && item.is_due).length
@@ -346,7 +355,14 @@ function AuthenticatedApp() {
                         type="button"
                         className="app__button"
                         disabled={history?.loading}
-                        onClick={() => void dispatch(fetchEndpointHistory(endpoint.id))}
+                        onClick={() =>
+                          void dispatch(
+                            fetchEndpointHistory({
+                              endpointId: endpoint.id,
+                              page: history?.page ?? 1,
+                            }),
+                          )
+                        }
                       >
                         {history?.loading ? "Refreshing…" : "Refresh history"}
                       </button>
@@ -355,6 +371,9 @@ function AuthenticatedApp() {
                       items={history?.items ?? []}
                       loading={history?.loading ?? true}
                       error={history?.error ?? null}
+                      page={history?.page ?? 1}
+                      totalPages={history?.total_pages ?? 1}
+                      onPageChange={(page) => handleHistoryPageChange(endpoint.id, page)}
                     />
                   </div>
                 )}
@@ -367,7 +386,14 @@ function AuthenticatedApp() {
                         type="button"
                         className="app__button"
                         disabled={alerts?.loading}
-                        onClick={() => void dispatch(fetchEndpointAlerts(endpoint.id))}
+                        onClick={() =>
+                          void dispatch(
+                            fetchEndpointAlerts({
+                              endpointId: endpoint.id,
+                              page: alerts?.page ?? 1,
+                            }),
+                          )
+                        }
                       >
                         {alerts?.loading ? "Refreshing…" : "Refresh alerts"}
                       </button>
@@ -376,6 +402,9 @@ function AuthenticatedApp() {
                       items={alerts?.items ?? []}
                       loading={alerts?.loading ?? true}
                       error={alerts?.error ?? null}
+                      page={alerts?.page ?? 1}
+                      totalPages={alerts?.total_pages ?? 1}
+                      onPageChange={(page) => handleAlertsPageChange(endpoint.id, page)}
                     />
                   </div>
                 )}

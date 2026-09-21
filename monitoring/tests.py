@@ -284,9 +284,10 @@ def test_list_endpoint_checks(api_client) -> None:
     response = api_client.get(f"/api/endpoints/{endpoint.id}/checks/")
 
     assert response.status_code == status.HTTP_200_OK
-    assert len(response.data) == 2
-    assert response.data[0]["id"] == newer.id
-    assert response.data[1]["id"] == older.id
+    assert response.data["count"] == 2
+    assert len(response.data["results"]) == 2
+    assert response.data["results"][0]["id"] == newer.id
+    assert response.data["results"][1]["id"] == older.id
 
 
 @pytest.mark.django_db
@@ -439,8 +440,8 @@ def test_list_endpoint_alerts(api_client) -> None:
     response = api_client.get(f"/api/endpoints/{endpoint.id}/alerts/")
 
     assert response.status_code == status.HTTP_200_OK
-    assert len(response.data) == 2
-    ids = {item["id"] for item in response.data}
+    assert response.data["count"] == 2
+    ids = {item["id"] for item in response.data["results"]}
     assert newer.id in ids
     assert older.id in ids
 
@@ -534,7 +535,10 @@ def test_run_check_worker_once(mock_call: MagicMock) -> None:
     from django.core.management import call_command
 
     call_command("run_check_worker", once=True, interval=5)
-    mock_call.assert_called_once_with("check_endpoints", due=True)
+    assert mock_call.call_args_list == [
+        (("check_endpoints",), {"due": True}),
+        (("prune_checks",), {}),
+    ]
 
 
 @pytest.mark.django_db
@@ -864,3 +868,69 @@ def test_status_page_config_update(api_client) -> None:
     assert public.data["title"] == "Acme Status"
     assert public.data["subtitle"] == "Platform health"
     assert public.data["support_url"] == "https://support.example.com"
+
+
+@pytest.mark.django_db
+def test_dashboard_includes_series(api_client) -> None:
+    endpoint = MonitoredEndpointFactory()
+    HealthCheckResultFactory(endpoint=endpoint, status=HealthCheckResult.Status.UP)
+    HealthCheckResultFactory(
+        endpoint=endpoint, status=HealthCheckResult.Status.DOWN, status_code=500
+    )
+
+    response = api_client.get("/api/dashboard/?hours=24")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert "series" in response.data
+    assert isinstance(response.data["series"], list)
+    assert len(response.data["series"]) == 24
+
+
+@pytest.mark.django_db
+def test_export_checks_csv(api_client) -> None:
+    endpoint = MonitoredEndpointFactory(name="CSV Target")
+    HealthCheckResultFactory(endpoint=endpoint, status=HealthCheckResult.Status.UP)
+
+    response = api_client.get("/api/exports/checks.csv?hours=24")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert "text/csv" in response["Content-Type"]
+    body = response.content.decode()
+    assert "endpoint_name" in body
+    assert "CSV Target" in body
+
+
+@pytest.mark.django_db
+def test_prune_old_checks() -> None:
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from monitoring.retention import prune_old_checks
+
+    endpoint = MonitoredEndpointFactory()
+    old = HealthCheckResultFactory(endpoint=endpoint)
+    HealthCheckResult.objects.filter(pk=old.pk).update(
+        checked_at=timezone.now() - timedelta(days=40)
+    )
+    fresh = HealthCheckResultFactory(endpoint=endpoint)
+
+    deleted = prune_old_checks(days=30)
+
+    assert deleted == 1
+    assert not HealthCheckResult.objects.filter(pk=old.pk).exists()
+    assert HealthCheckResult.objects.filter(pk=fresh.pk).exists()
+
+
+@pytest.mark.django_db
+def test_checks_pagination(api_client) -> None:
+    endpoint = MonitoredEndpointFactory()
+    HealthCheckResultFactory.create_batch(5, endpoint=endpoint)
+
+    response = api_client.get(f"/api/endpoints/{endpoint.id}/checks/?page=1&page_size=2")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["count"] == 5
+    assert response.data["page_size"] == 2
+    assert len(response.data["results"]) == 2
+    assert response.data["total_pages"] == 3

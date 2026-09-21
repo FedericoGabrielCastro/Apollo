@@ -28,6 +28,14 @@ export type DashboardOpenIncident = {
   opened_at: string
 }
 
+export type DashboardSeriesBucket = {
+  bucket_start: string
+  checks_total: number
+  checks_up: number
+  avg_latency_ms: number | null
+  uptime_percent: number | null
+}
+
 export type DashboardEndpointRow = {
   id: number
   name: string
@@ -45,6 +53,7 @@ export type DashboardData = {
   window_hours: number
   generated_at: string
   summary: DashboardSummary
+  series: DashboardSeriesBucket[]
   endpoints: DashboardEndpointRow[]
   recent_failures: Array<{
     id: number
