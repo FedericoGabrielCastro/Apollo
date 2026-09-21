@@ -13,6 +13,22 @@ jobs:
   backend:
     name: Backend tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: apollo
+          POSTGRES_USER: apollo
+          POSTGRES_PASSWORD: apollo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U apollo -d apollo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://apollo:apollo@localhost:5432/apollo
     steps:
       - uses: actions/checkout@v4
 
@@ -63,3 +79,6 @@ jobs:
 
       - name: Build image
         run: docker build -t apollo:ci .
+
+      - name: Validate compose file
+        run: docker compose config -q

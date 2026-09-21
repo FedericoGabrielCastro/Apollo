@@ -21,3 +21,19 @@ def test_whitenoise_is_enabled() -> None:
     assert "whitenoise.storage.CompressedStaticFilesStorage" in str(
         settings.STORAGES["staticfiles"]["BACKEND"]
     )
+
+
+def test_check_interval_setting() -> None:
+    from django.conf import settings
+
+    assert isinstance(settings.CHECK_INTERVAL_SECONDS, int)
+    assert settings.CHECK_INTERVAL_SECONDS >= 1
+
+
+def test_database_url_parsing() -> None:
+    import dj_database_url
+
+    config = dj_database_url.parse("postgres://apollo:apollo@db:5432/apollo")
+    assert config["ENGINE"].endswith("postgresql")
+    assert config["NAME"] == "apollo"
+    assert config["HOST"] == "db"
