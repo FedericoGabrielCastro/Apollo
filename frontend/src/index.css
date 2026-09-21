@@ -1,0 +1,26 @@
+:root {
+  color: #1a1f24;
+  background:
+    radial-gradient(circle at top left, #d7e8ef 0%, transparent 45%),
+    linear-gradient(160deg, #f3f6f8 0%, #e4ecef 100%);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-synthesis: none;
+  line-height: 1.5;
+  font-weight: 400;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
