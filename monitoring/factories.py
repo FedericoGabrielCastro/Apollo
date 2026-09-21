@@ -13,6 +13,7 @@ class MonitoredEndpointFactory(factory.django.DjangoModelFactory):
     expected_status = 200
     is_active = True
     timeout_seconds = 5
+    check_interval_minutes = 5
 
 
 class HealthCheckResultFactory(factory.django.DjangoModelFactory):

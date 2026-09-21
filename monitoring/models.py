@@ -10,6 +10,10 @@ class MonitoredEndpoint(models.Model):
     expected_status = models.PositiveSmallIntegerField(default=200)
     is_active = models.BooleanField(default=True)
     timeout_seconds = models.PositiveSmallIntegerField(default=5)
+    check_interval_minutes = models.PositiveIntegerField(
+        default=5,
+        help_text="Minimum minutes between automatic due checks.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

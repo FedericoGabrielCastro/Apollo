@@ -18,9 +18,11 @@ export type MonitoredEndpoint = {
   expected_status: number
   is_active: boolean
   timeout_seconds: number
+  check_interval_minutes: number
   created_at: string
   updated_at: string
   last_check: HealthCheckResult | null
+  is_due: boolean
 }
 
 export type EndpointInput = {
@@ -30,12 +32,14 @@ export type EndpointInput = {
   expected_status: number
   is_active: boolean
   timeout_seconds: number
+  check_interval_minutes: number
 }
 
 type EndpointsState = {
   items: MonitoredEndpoint[]
   loading: boolean
   saving: boolean
+  checkingDue: boolean
   checkingId: number | null
   deletingId: number | null
   error: string | null
@@ -45,6 +49,7 @@ const initialState: EndpointsState = {
   items: [],
   loading: false,
   saving: false,
+  checkingDue: false,
   checkingId: null,
   deletingId: null,
   error: null,
@@ -137,6 +142,19 @@ export const checkEndpoint = createAsyncThunk(
   },
 )
 
+export const checkDueEndpoints = createAsyncThunk(
+  "endpoints/checkDue",
+  async (): Promise<{ checked: number; results: HealthCheckResult[] }> => {
+    const response = await fetch("/api/endpoints/check-due/", {
+      method: "POST",
+    })
+    if (!response.ok) {
+      throw new Error(await readError(response, "Due check failed"))
+    }
+    return response.json()
+  },
+)
+
 const endpointsSlice = createSlice({
   name: "endpoints",
   initialState,
@@ -209,10 +227,29 @@ const endpointsSlice = createSlice({
         const item = state.items.find((endpoint) => endpoint.id === action.payload.endpointId)
         if (item) {
           item.last_check = action.payload.result
+          item.is_due = false
         }
       })
       .addCase(checkEndpoint.rejected, (state, action) => {
         state.checkingId = null
+        state.error = action.error.message ?? "Unknown error"
+      })
+      .addCase(checkDueEndpoints.pending, (state) => {
+        state.checkingDue = true
+        state.error = null
+      })
+      .addCase(checkDueEndpoints.fulfilled, (state, action) => {
+        state.checkingDue = false
+        for (const result of action.payload.results) {
+          const item = state.items.find((endpoint) => endpoint.id === result.endpoint)
+          if (item) {
+            item.last_check = result
+            item.is_due = false
+          }
+        }
+      })
+      .addCase(checkDueEndpoints.rejected, (state, action) => {
+        state.checkingDue = false
         state.error = action.error.message ?? "Unknown error"
       })
   },

@@ -150,6 +150,7 @@ def test_update_endpoint() -> None:
             "expected_status": 204,
             "is_active": False,
             "timeout_seconds": 10,
+            "check_interval_minutes": 15,
         },
         format="json",
     )
@@ -160,6 +161,7 @@ def test_update_endpoint() -> None:
     assert endpoint.method == "HEAD"
     assert endpoint.expected_status == 204
     assert endpoint.is_active is False
+    assert endpoint.check_interval_minutes == 15
 
 
 @pytest.mark.django_db
@@ -190,3 +192,70 @@ def test_create_endpoint_rejects_invalid_method() -> None:
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_endpoint_is_due_when_never_checked() -> None:
+    endpoint = MonitoredEndpointFactory(check_interval_minutes=5)
+    client = APIClient()
+
+    response = client.get(f"/api/endpoints/{endpoint.id}/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["is_due"] is True
+    assert response.data["check_interval_minutes"] == 5
+
+
+@pytest.mark.django_db
+def test_endpoint_not_due_right_after_check() -> None:
+    endpoint = MonitoredEndpointFactory(check_interval_minutes=60)
+    HealthCheckResultFactory(endpoint=endpoint)
+    client = APIClient()
+
+    response = client.get(f"/api/endpoints/{endpoint.id}/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["is_due"] is False
+
+
+@pytest.mark.django_db
+@patch("monitoring.views.run_due_checks")
+def test_check_due_action(mock_run_due: MagicMock) -> None:
+    endpoint = MonitoredEndpointFactory()
+    mock_run_due.return_value = [
+        HealthCheckResultFactory(
+            endpoint=endpoint,
+            status=HealthCheckResult.Status.UP,
+            status_code=200,
+            latency_ms=4.0,
+        )
+    ]
+    client = APIClient()
+
+    response = client.post("/api/endpoints/check-due/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["checked"] == 1
+    assert response.data["results"][0]["status"] == "up"
+    mock_run_due.assert_called_once_with()
+
+
+@pytest.mark.django_db
+@patch("monitoring.services.probe_endpoint")
+def test_check_endpoints_due_skips_fresh(mock_probe: MagicMock) -> None:
+    from django.core.management import call_command
+
+    fresh = MonitoredEndpointFactory(check_interval_minutes=60)
+    HealthCheckResultFactory(endpoint=fresh)
+    due = MonitoredEndpointFactory(check_interval_minutes=1, name="Due one")
+    mock_probe.return_value = CheckOutcome(
+        status=HealthCheckResult.Status.UP,
+        status_code=200,
+        latency_ms=5.0,
+        error_message="",
+    )
+
+    call_command("check_endpoints", due=True)
+
+    assert HealthCheckResult.objects.filter(endpoint=due).count() == 1
+    assert HealthCheckResult.objects.filter(endpoint=fresh).count() == 1

@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 
 from monitoring.models import HealthCheckResult, MonitoredEndpoint
 from monitoring.serializers import HealthCheckResultSerializer, MonitoredEndpointSerializer
-from monitoring.services import run_health_check
+from monitoring.services import run_due_checks, run_health_check
 
 
 class HealthView(APIView):
@@ -37,6 +37,17 @@ class MonitoredEndpointViewSet(viewsets.ModelViewSet):
         return Response(
             HealthCheckResultSerializer(result).data,
             status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=["post"], url_path="check-due")
+    def check_due(self, request: Request) -> Response:
+        results = run_due_checks()
+        return Response(
+            {
+                "checked": len(results),
+                "results": HealthCheckResultSerializer(results, many=True).data,
+            },
+            status=status.HTTP_200_OK if results else status.HTTP_200_OK,
         )
 
     @action(detail=True, methods=["get"], url_path="checks")
