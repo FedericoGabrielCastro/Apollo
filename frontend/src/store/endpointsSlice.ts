@@ -23,18 +23,44 @@ export type MonitoredEndpoint = {
   last_check: HealthCheckResult | null
 }
 
+export type EndpointInput = {
+  name: string
+  url: string
+  method: string
+  expected_status: number
+  is_active: boolean
+  timeout_seconds: number
+}
+
 type EndpointsState = {
   items: MonitoredEndpoint[]
   loading: boolean
+  saving: boolean
   checkingId: number | null
+  deletingId: number | null
   error: string | null
 }
 
 const initialState: EndpointsState = {
   items: [],
   loading: false,
+  saving: false,
   checkingId: null,
+  deletingId: null,
   error: null,
+}
+
+async function readError(response: Response, fallback: string): Promise<string> {
+  try {
+    const body = await response.json()
+    if (typeof body === "string") return body
+    if (body.detail) return String(body.detail)
+    const first = Object.values(body).flat()[0]
+    if (first) return String(first)
+  } catch {
+    // ignore parse errors
+  }
+  return `${fallback} (${response.status})`
 }
 
 export const fetchEndpoints = createAsyncThunk(
@@ -42,9 +68,58 @@ export const fetchEndpoints = createAsyncThunk(
   async (): Promise<MonitoredEndpoint[]> => {
     const response = await fetch("/api/endpoints/")
     if (!response.ok) {
-      throw new Error(`Failed to load endpoints (${response.status})`)
+      throw new Error(await readError(response, "Failed to load endpoints"))
     }
     return response.json()
+  },
+)
+
+export const createEndpoint = createAsyncThunk(
+  "endpoints/create",
+  async (payload: EndpointInput): Promise<MonitoredEndpoint> => {
+    const response = await fetch("/api/endpoints/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) {
+      throw new Error(await readError(response, "Failed to create endpoint"))
+    }
+    return response.json()
+  },
+)
+
+export const updateEndpoint = createAsyncThunk(
+  "endpoints/update",
+  async ({
+    id,
+    payload,
+  }: {
+    id: number
+    payload: EndpointInput
+  }): Promise<MonitoredEndpoint> => {
+    const response = await fetch(`/api/endpoints/${id}/`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) {
+      throw new Error(await readError(response, "Failed to update endpoint"))
+    }
+    return response.json()
+  },
+)
+
+export const deleteEndpoint = createAsyncThunk(
+  "endpoints/delete",
+  async (endpointId: number): Promise<number> => {
+    const response = await fetch(`/api/endpoints/${endpointId}/`, {
+      method: "DELETE",
+    })
+    if (!response.ok) {
+      throw new Error(await readError(response, "Failed to delete endpoint"))
+    }
+    return endpointId
   },
 )
 
@@ -55,7 +130,7 @@ export const checkEndpoint = createAsyncThunk(
       method: "POST",
     })
     if (!response.ok) {
-      throw new Error(`Check failed (${response.status})`)
+      throw new Error(await readError(response, "Check failed"))
     }
     const result: HealthCheckResult = await response.json()
     return { endpointId, result }
@@ -65,7 +140,11 @@ export const checkEndpoint = createAsyncThunk(
 const endpointsSlice = createSlice({
   name: "endpoints",
   initialState,
-  reducers: {},
+  reducers: {
+    clearEndpointsError(state) {
+      state.error = null
+    },
+  },
   extraReducers: (builder) => {
     builder
       .addCase(fetchEndpoints.pending, (state) => {
@@ -78,6 +157,47 @@ const endpointsSlice = createSlice({
       })
       .addCase(fetchEndpoints.rejected, (state, action) => {
         state.loading = false
+        state.error = action.error.message ?? "Unknown error"
+      })
+      .addCase(createEndpoint.pending, (state) => {
+        state.saving = true
+        state.error = null
+      })
+      .addCase(createEndpoint.fulfilled, (state, action) => {
+        state.saving = false
+        state.items.push(action.payload)
+        state.items.sort((a, b) => a.name.localeCompare(b.name))
+      })
+      .addCase(createEndpoint.rejected, (state, action) => {
+        state.saving = false
+        state.error = action.error.message ?? "Unknown error"
+      })
+      .addCase(updateEndpoint.pending, (state) => {
+        state.saving = true
+        state.error = null
+      })
+      .addCase(updateEndpoint.fulfilled, (state, action) => {
+        state.saving = false
+        const index = state.items.findIndex((item) => item.id === action.payload.id)
+        if (index >= 0) {
+          state.items[index] = action.payload
+        }
+        state.items.sort((a, b) => a.name.localeCompare(b.name))
+      })
+      .addCase(updateEndpoint.rejected, (state, action) => {
+        state.saving = false
+        state.error = action.error.message ?? "Unknown error"
+      })
+      .addCase(deleteEndpoint.pending, (state, action) => {
+        state.deletingId = action.meta.arg
+        state.error = null
+      })
+      .addCase(deleteEndpoint.fulfilled, (state, action) => {
+        state.deletingId = null
+        state.items = state.items.filter((item) => item.id !== action.payload)
+      })
+      .addCase(deleteEndpoint.rejected, (state, action) => {
+        state.deletingId = null
         state.error = action.error.message ?? "Unknown error"
       })
       .addCase(checkEndpoint.pending, (state, action) => {
@@ -98,4 +218,5 @@ const endpointsSlice = createSlice({
   },
 })
 
+export const { clearEndpointsError } = endpointsSlice.actions
 export default endpointsSlice.reducer
