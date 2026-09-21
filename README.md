@@ -8,7 +8,7 @@ Django + React API Health Monitor (monolith).
 - **Frontend:** React + Vite + Redux Toolkit + React Router (pnpm)
 - **Data:** SQLite (local) or PostgreSQL (`DATABASE_URL`)
 - **Ops:** Docker Compose (`db` + `web` + `worker`), GitHub Actions CI
-- **Product:** due checks, assertions, SSL expiry, maintenance mute, webhooks + email, incidents, tags, public status, dashboard
+- **Product:** due checks, assertions, SSL, mute windows, probe auth, failure threshold, Discord/Slack, status branding, incidents, tags, dashboard
 
 ## Quick start (local)
 
@@ -42,11 +42,11 @@ docker compose up --build
 | Area | Details |
 |------|---------|
 | Auth | Token login/logout/me; API protected except health + public status |
-| Endpoints | CRUD, tags, public flag, interval, webhook + email, mute window |
-| Checks | Manual, due, history; body/latency assertions; optional SSL expiry |
-| Alerts | Transition-only webhook/email; muted while `mute_alerts_until` is future |
-| Incidents | Auto-open on failure, auto-resolve on recovery |
-| Status page | Public `/status` + `GET /api/status/public/` |
+| Endpoints | CRUD, tags, public, interval, webhook/email/Discord/Slack, mute, probe auth/headers |
+| Checks | Manual, due, history; body/latency assertions; SSL expiry; failure threshold |
+| Alerts | Transition after N failures; muted while `mute_alerts_until` is future |
+| Incidents | Auto-open after threshold, auto-resolve on recovery |
+| Status page | Public `/status` + branding via `/api/status/config/` |
 | Dashboard | Uptime, latency, due, open incidents |
 
 ## Key API routes
@@ -55,6 +55,7 @@ docker compose up --build
 |--------|------|------|
 | GET | `/api/health/` | public |
 | GET | `/api/status/public/` | public |
+| GET/PATCH | `/api/status/config/` | token |
 | POST | `/api/auth/login/` | public |
 | GET | `/api/dashboard/` | token |
 | CRUD | `/api/endpoints/` | token |

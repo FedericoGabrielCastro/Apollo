@@ -5,6 +5,8 @@ import type { EndpointInput, MonitoredEndpoint } from "../store/endpointsSlice"
 
 const METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const
 
+const AUTH_TYPES = ["none", "bearer", "basic"] as const
+
 const EMPTY_FORM: EndpointInput = {
   name: "",
   url: "",
@@ -22,7 +24,34 @@ const EMPTY_FORM: EndpointInput = {
   check_ssl_expiry: false,
   ssl_warn_days: 14,
   mute_alerts_until: null,
+  request_headers: {},
+  auth_type: "none",
+  auth_username: "",
+  auth_secret: "",
+  failure_threshold: 1,
+  discord_webhook_url: "",
+  slack_webhook_url: "",
   tags: [],
+}
+
+function headersToText(headers: Record<string, string>): string {
+  return Object.entries(headers)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n")
+}
+
+function textToHeaders(text: string): Record<string, string> {
+  const headers: Record<string, string> = {}
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const colon = trimmed.indexOf(":")
+    if (colon <= 0) continue
+    const key = trimmed.slice(0, colon).trim()
+    const value = trimmed.slice(colon + 1).trim()
+    if (key) headers[key] = value
+  }
+  return headers
 }
 
 type EndpointFormProps = {
@@ -68,6 +97,13 @@ function toInput(endpoint: MonitoredEndpoint): EndpointInput {
     check_ssl_expiry: endpoint.check_ssl_expiry,
     ssl_warn_days: endpoint.ssl_warn_days,
     mute_alerts_until: endpoint.mute_alerts_until,
+    request_headers: endpoint.request_headers ?? {},
+    auth_type: endpoint.auth_type ?? "none",
+    auth_username: endpoint.auth_username ?? "",
+    auth_secret: endpoint.auth_secret ?? "",
+    failure_threshold: endpoint.failure_threshold ?? 1,
+    discord_webhook_url: endpoint.discord_webhook_url ?? "",
+    slack_webhook_url: endpoint.slack_webhook_url ?? "",
     tags: endpoint.tags ?? [],
   }
 }
@@ -90,6 +126,9 @@ export function EndpointForm({
   const [maxLatencyText, setMaxLatencyText] = useState(
     initial?.max_latency_ms != null ? String(initial.max_latency_ms) : "",
   )
+  const [headersText, setHeadersText] = useState(
+    initial ? headersToText(initial.request_headers ?? {}) : "",
+  )
 
   useEffect(() => {
     setForm(initial ? toInput(initial) : EMPTY_FORM)
@@ -98,6 +137,7 @@ export function EndpointForm({
     setMaxLatencyText(
       initial?.max_latency_ms != null ? String(initial.max_latency_ms) : "",
     )
+    setHeadersText(initial ? headersToText(initial.request_headers ?? {}) : "")
   }, [initial])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -111,6 +151,7 @@ export function EndpointForm({
     await onSubmit({
       ...form,
       tags,
+      request_headers: textToHeaders(headersText),
       max_latency_ms:
         max_latency_ms != null && Number.isFinite(max_latency_ms)
           ? max_latency_ms
@@ -122,6 +163,7 @@ export function EndpointForm({
       setTagsText("")
       setMuteLocal("")
       setMaxLatencyText("")
+      setHeadersText("")
     }
   }
 
@@ -245,12 +287,97 @@ export function EndpointForm({
           />
         </label>
         <label className="endpoint-form__wide">
+          Request headers
+          <textarea
+            rows={3}
+            placeholder={"Authorization: Bearer token\nX-Custom: value"}
+            value={headersText}
+            onChange={(event) => setHeadersText(event.target.value)}
+          />
+        </label>
+        <label>
+          Auth type
+          <select
+            value={form.auth_type}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                auth_type: event.target.value as EndpointInput["auth_type"],
+              })
+            }
+          >
+            {AUTH_TYPES.map((authType) => (
+              <option key={authType} value={authType}>
+                {authType}
+              </option>
+            ))}
+          </select>
+        </label>
+        {form.auth_type === "basic" && (
+          <label>
+            Auth username
+            <input
+              value={form.auth_username}
+              onChange={(event) =>
+                setForm({ ...form, auth_username: event.target.value })
+              }
+            />
+          </label>
+        )}
+        {form.auth_type !== "none" && (
+          <label className={form.auth_type === "bearer" ? "endpoint-form__wide" : undefined}>
+            Auth secret
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder={isEdit ? "Leave blank to keep current" : ""}
+              value={form.auth_secret}
+              onChange={(event) => setForm({ ...form, auth_secret: event.target.value })}
+            />
+          </label>
+        )}
+        <label>
+          Failure threshold
+          <input
+            required
+            type="number"
+            min={1}
+            max={20}
+            value={form.failure_threshold}
+            onChange={(event) =>
+              setForm({ ...form, failure_threshold: Number(event.target.value) })
+            }
+          />
+        </label>
+        <label className="endpoint-form__wide">
           Webhook URL
           <input
             type="url"
             placeholder="https://hooks.example.com/apollo"
             value={form.webhook_url}
             onChange={(event) => setForm({ ...form, webhook_url: event.target.value })}
+          />
+        </label>
+        <label className="endpoint-form__wide">
+          Discord webhook URL
+          <input
+            type="url"
+            placeholder="https://discord.com/api/webhooks/…"
+            value={form.discord_webhook_url}
+            onChange={(event) =>
+              setForm({ ...form, discord_webhook_url: event.target.value })
+            }
+          />
+        </label>
+        <label className="endpoint-form__wide">
+          Slack webhook URL
+          <input
+            type="url"
+            placeholder="https://hooks.slack.com/services/…"
+            value={form.slack_webhook_url}
+            onChange={(event) =>
+              setForm({ ...form, slack_webhook_url: event.target.value })
+            }
           />
         </label>
         <label className="endpoint-form__wide">

@@ -5,11 +5,13 @@ from monitoring.models import (
     HealthCheckResult,
     Incident,
     MonitoredEndpoint,
+    StatusPageConfig,
     Tag,
 )
 from monitoring.services import is_endpoint_due
 
 HTTP_METHODS = ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE")
+AUTH_TYPES = ("none", "bearer", "basic")
 
 
 class HealthCheckResultSerializer(serializers.ModelSerializer):
@@ -88,6 +90,11 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
         required=False, allow_null=True, min_value=1
     )
     mute_alerts_until = serializers.DateTimeField(required=False, allow_null=True)
+    discord_webhook_url = serializers.URLField(required=False, allow_blank=True)
+    slack_webhook_url = serializers.URLField(required=False, allow_blank=True)
+    request_headers = serializers.JSONField(required=False)
+    auth_username = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    auth_secret = serializers.CharField(required=False, allow_blank=True, max_length=255)
 
     class Meta:
         model = MonitoredEndpoint
@@ -109,6 +116,13 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
             "check_ssl_expiry",
             "ssl_warn_days",
             "mute_alerts_until",
+            "request_headers",
+            "auth_type",
+            "auth_username",
+            "auth_secret",
+            "failure_threshold",
+            "discord_webhook_url",
+            "slack_webhook_url",
             "tags",
             "created_at",
             "updated_at",
@@ -173,6 +187,34 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate_auth_type(self, value: str) -> str:
+        auth_type = (value or "none").lower()
+        if auth_type not in AUTH_TYPES:
+            raise serializers.ValidationError(
+                f"Invalid auth_type. Allowed: {', '.join(AUTH_TYPES)}."
+            )
+        return auth_type
+
+    def validate_failure_threshold(self, value: int) -> int:
+        if value < 1 or value > 20:
+            raise serializers.ValidationError(
+                "Failure threshold must be between 1 and 20."
+            )
+        return value
+
+    def validate_request_headers(self, value):
+        if value in (None, ""):
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("request_headers must be an object.")
+        cleaned: dict[str, str] = {}
+        for key, item in value.items():
+            name = str(key).strip()
+            if not name:
+                continue
+            cleaned[name] = str(item)
+        return cleaned
+
     def _parse_tag_names(self) -> list[str] | None:
         if "tags" not in self.initial_data:
             return None
@@ -236,3 +278,10 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
             .first()
         )
         return is_endpoint_due(obj, last_checked_at=last)
+
+
+class StatusPageConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StatusPageConfig
+        fields = ["title", "subtitle", "support_url", "updated_at"]
+        read_only_fields = ["updated_at"]

@@ -6,6 +6,7 @@ import { CheckHistory } from "./components/CheckHistory"
 import { DashboardPanel } from "./components/DashboardPanel"
 import { EndpointForm } from "./components/EndpointForm"
 import { LoginForm } from "./components/LoginForm"
+import { StatusPageConfigForm } from "./components/StatusPageConfigForm"
 import { useAppDispatch, useAppSelector } from "./store/hooks"
 import {
   bootstrapAuth,
@@ -151,6 +152,8 @@ function AuthenticatedApp() {
 
       <DashboardPanel />
 
+      <StatusPageConfigForm />
+
       <section className="app__form-section">
         <h2>{editing ? `Edit ${editing.name}` : "Add endpoint"}</h2>
         <EndpointForm
@@ -232,6 +235,21 @@ function AuthenticatedApp() {
                       )}
                       {endpoint.alert_on_failure && endpoint.alert_email && (
                         <span className="app__muted"> · email</span>
+                      )}
+                      {endpoint.alert_on_failure && endpoint.discord_webhook_url && (
+                        <span className="app__muted"> · discord</span>
+                      )}
+                      {endpoint.alert_on_failure && endpoint.slack_webhook_url && (
+                        <span className="app__muted"> · slack</span>
+                      )}
+                      {endpoint.auth_type && endpoint.auth_type !== "none" && (
+                        <span className="app__muted"> · {endpoint.auth_type}</span>
+                      )}
+                      {endpoint.failure_threshold > 1 && (
+                        <span className="app__muted">
+                          {" "}
+                          · threshold {endpoint.failure_threshold}
+                        </span>
                       )}
                       {endpoint.check_ssl_expiry && (
                         <span className="app__muted"> · ssl</span>
