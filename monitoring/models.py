@@ -43,6 +43,29 @@ class MonitoredEndpoint(models.Model):
         default=True,
         help_text="Send alerts when status transitions to down/error or recovers.",
     )
+    expect_body_contains = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="If set, response body must contain this substring.",
+    )
+    max_latency_ms = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="If set, responses slower than this are marked down.",
+    )
+    check_ssl_expiry = models.BooleanField(
+        default=False,
+        help_text="For HTTPS URLs, fail when the certificate expires within ssl_warn_days.",
+    )
+    ssl_warn_days = models.PositiveSmallIntegerField(
+        default=14,
+        help_text="Days before SSL expiry to treat the endpoint as down.",
+    )
+    mute_alerts_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="While set and in the future, skip webhook/email (incidents still sync).",
+    )
     tags = models.ManyToManyField(Tag, blank=True, related_name="endpoints")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

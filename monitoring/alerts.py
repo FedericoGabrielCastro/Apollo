@@ -147,26 +147,32 @@ def sync_incident_for_transition(
     return None
 
 
+def alerts_are_muted(endpoint: MonitoredEndpoint, *, now=None) -> bool:
+    """True when mute_alerts_until is set and still in the future."""
+    if endpoint.mute_alerts_until is None:
+        return False
+    if now is None:
+        now = timezone.now()
+    return endpoint.mute_alerts_until > now
+
+
 def dispatch_alerts_for_result(
     endpoint: MonitoredEndpoint,
     result: HealthCheckResult,
 ) -> list[AlertEvent]:
     """Evaluate status transition, sync incidents, and dispatch alert channels."""
-    if not endpoint.alert_on_failure:
-        # Still track incidents even if alerting is disabled? Product choice:
-        # track incidents whenever status transitions, regardless of alert_on_failure.
-        previous_status = previous_check_status(endpoint, result)
-        event_type = resolve_alert_event_type(previous_status, result.status)
-        if event_type:
-            sync_incident_for_transition(endpoint, result, event_type)
-        return []
-
     previous_status = previous_check_status(endpoint, result)
     event_type = resolve_alert_event_type(previous_status, result.status)
+
+    # Incidents always track transitions, even when alerting is off or muted.
+    if event_type:
+        sync_incident_for_transition(endpoint, result, event_type)
+
     if event_type is None:
         return []
 
-    sync_incident_for_transition(endpoint, result, event_type)
+    if not endpoint.alert_on_failure or alerts_are_muted(endpoint):
+        return []
 
     alerts: list[AlertEvent] = []
     payload = build_alert_payload(endpoint, result, event_type)

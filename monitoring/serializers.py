@@ -81,6 +81,13 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
     method = serializers.CharField(default="GET", max_length=10)
     webhook_url = serializers.URLField(required=False, allow_blank=True)
     alert_email = serializers.EmailField(required=False, allow_blank=True)
+    expect_body_contains = serializers.CharField(
+        required=False, allow_blank=True, max_length=255
+    )
+    max_latency_ms = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
+    mute_alerts_until = serializers.DateTimeField(required=False, allow_null=True)
 
     class Meta:
         model = MonitoredEndpoint
@@ -97,6 +104,11 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
             "webhook_url",
             "alert_email",
             "alert_on_failure",
+            "expect_body_contains",
+            "max_latency_ms",
+            "check_ssl_expiry",
+            "ssl_warn_days",
+            "mute_alerts_until",
             "tags",
             "created_at",
             "updated_at",
@@ -142,6 +154,22 @@ class MonitoredEndpointSerializer(serializers.ModelSerializer):
         if value < 1 or value > 24 * 60:
             raise serializers.ValidationError(
                 "Interval must be between 1 and 1440 minutes."
+            )
+        return value
+
+    def validate_ssl_warn_days(self, value: int) -> int:
+        if value < 1 or value > 365:
+            raise serializers.ValidationError(
+                "SSL warn days must be between 1 and 365."
+            )
+        return value
+
+    def validate_max_latency_ms(self, value: int | None) -> int | None:
+        if value is None:
+            return value
+        if value < 1 or value > 600_000:
+            raise serializers.ValidationError(
+                "Max latency must be between 1 and 600000 ms."
             )
         return value
 

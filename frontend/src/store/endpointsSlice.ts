@@ -49,6 +49,11 @@ export type MonitoredEndpoint = {
   webhook_url: string
   alert_email: string
   alert_on_failure: boolean
+  expect_body_contains: string
+  max_latency_ms: number | null
+  check_ssl_expiry: boolean
+  ssl_warn_days: number
+  mute_alerts_until: string | null
   tags: string[]
   created_at: string
   updated_at: string
@@ -70,6 +75,11 @@ export type EndpointInput = {
   webhook_url: string
   alert_email: string
   alert_on_failure: boolean
+  expect_body_contains: string
+  max_latency_ms: number | null
+  check_ssl_expiry: boolean
+  ssl_warn_days: number
+  mute_alerts_until: string | null
   tags: string[]
 }
 

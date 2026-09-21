@@ -611,3 +611,128 @@ def test_filter_endpoints_by_tag(api_client) -> None:
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data) == 1
     assert response.data[0]["name"] == "Core API"
+
+
+@pytest.mark.django_db
+@patch("monitoring.services.check_ssl_certificate", return_value=None)
+@patch("httpx.Client")
+def test_body_assertion_marks_down(mock_client_cls: MagicMock, _ssl: MagicMock) -> None:
+    from monitoring.models import HealthCheckResult
+    from monitoring.services import probe_endpoint
+
+    endpoint = MonitoredEndpointFactory(expect_body_contains="healthy")
+    response = MagicMock()
+    response.status_code = 200
+    response.text = "status=degraded"
+    mock_client_cls.return_value.__enter__.return_value.request.return_value = response
+
+    outcome = probe_endpoint(endpoint)
+
+    assert outcome.status == HealthCheckResult.Status.DOWN
+    assert "missing expected text" in outcome.error_message
+
+
+@pytest.mark.django_db
+@patch("monitoring.services.check_ssl_certificate", return_value=None)
+@patch("httpx.Client")
+def test_max_latency_marks_down(mock_client_cls: MagicMock, _ssl: MagicMock) -> None:
+    from monitoring.models import HealthCheckResult
+    from monitoring.services import probe_endpoint
+
+    endpoint = MonitoredEndpointFactory(max_latency_ms=1)
+    response = MagicMock()
+    response.status_code = 200
+    response.text = "ok"
+
+    def slow_request(*_args, **_kwargs):
+        import time
+
+        time.sleep(0.02)
+        return response
+
+    mock_client_cls.return_value.__enter__.return_value.request.side_effect = slow_request
+
+    outcome = probe_endpoint(endpoint)
+
+    assert outcome.status == HealthCheckResult.Status.DOWN
+    assert "exceeds max" in outcome.error_message
+
+
+@pytest.mark.django_db
+@patch(
+    "monitoring.services.check_ssl_certificate",
+    return_value="TLS certificate expires in 2 day(s) (warn threshold 14)",
+)
+def test_ssl_warn_marks_down(mock_ssl: MagicMock) -> None:
+    from monitoring.models import HealthCheckResult
+    from monitoring.services import probe_endpoint
+
+    endpoint = MonitoredEndpointFactory(
+        url="https://example.com/health",
+        check_ssl_expiry=True,
+        ssl_warn_days=14,
+    )
+
+    outcome = probe_endpoint(endpoint)
+
+    assert outcome.status == HealthCheckResult.Status.DOWN
+    assert "TLS certificate" in outcome.error_message
+    mock_ssl.assert_called_once()
+
+
+@pytest.mark.django_db
+@patch("monitoring.alerts.deliver_webhook")
+@patch("monitoring.services.probe_endpoint")
+def test_mute_alerts_skips_webhook(
+    mock_probe: MagicMock,
+    mock_deliver: MagicMock,
+) -> None:
+    from django.utils import timezone
+    from datetime import timedelta
+
+    from monitoring.models import AlertEvent, HealthCheckResult, Incident
+    from monitoring.services import run_health_check
+
+    endpoint = MonitoredEndpointFactory(
+        webhook_url="https://hooks.example.com/apollo",
+        mute_alerts_until=timezone.now() + timedelta(hours=1),
+    )
+    mock_probe.return_value = __import__(
+        "monitoring.services", fromlist=["CheckOutcome"]
+    ).CheckOutcome(
+        status=HealthCheckResult.Status.DOWN,
+        status_code=500,
+        latency_ms=10.0,
+        error_message="boom",
+    )
+
+    run_health_check(endpoint)
+
+    mock_deliver.assert_not_called()
+    assert AlertEvent.objects.count() == 0
+    assert Incident.objects.filter(status=Incident.Status.OPEN).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_endpoint_with_assertions(api_client) -> None:
+    response = api_client.post(
+        "/api/endpoints/",
+        {
+            "name": "Asserted",
+            "url": "https://example.com/health",
+            "method": "GET",
+            "expected_status": 200,
+            "expect_body_contains": "ok",
+            "max_latency_ms": 500,
+            "check_ssl_expiry": True,
+            "ssl_warn_days": 7,
+            "mute_alerts_until": None,
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data["expect_body_contains"] == "ok"
+    assert response.data["max_latency_ms"] == 500
+    assert response.data["check_ssl_expiry"] is True
+    assert response.data["ssl_warn_days"] == 7

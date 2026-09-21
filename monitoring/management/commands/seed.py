@@ -13,18 +13,22 @@ SEED_ENDPOINTS = [
         "url": "http://127.0.0.1:8000/api/health/",
         "method": "GET",
         "expected_status": 200,
+        "expect_body_contains": "ok",
     },
     {
         "name": "Example.com",
         "url": "https://example.com/",
         "method": "GET",
         "expected_status": 200,
+        "check_ssl_expiry": True,
+        "ssl_warn_days": 14,
     },
     {
         "name": "HTTPBin status 200",
         "url": "https://httpbin.org/status/200",
         "method": "GET",
         "expected_status": 200,
+        "max_latency_ms": 5000,
     },
 ]
 
