@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",
+    "rest_framework.authtoken",
     "monitoring",
 ]
 
@@ -93,7 +94,18 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.TokenAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
 }
+
+# Demo credentials created by `manage.py seed` (local development only).
+APOLLO_DEMO_USERNAME = "apollo"
+APOLLO_DEMO_PASSWORD = "apollo"

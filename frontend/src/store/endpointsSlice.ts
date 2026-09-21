@@ -1,5 +1,7 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit"
 
+import { apiFetch, readError } from "../api/client"
+
 export type HealthCheckResult = {
   id: number
   endpoint: number
@@ -86,23 +88,10 @@ const initialState: EndpointsState = {
   error: null,
 }
 
-async function readError(response: Response, fallback: string): Promise<string> {
-  try {
-    const body = await response.json()
-    if (typeof body === "string") return body
-    if (body.detail) return String(body.detail)
-    const first = Object.values(body).flat()[0]
-    if (first) return String(first)
-  } catch {
-    // ignore parse errors
-  }
-  return `${fallback} (${response.status})`
-}
-
 export const fetchEndpoints = createAsyncThunk(
   "endpoints/fetch",
   async (): Promise<MonitoredEndpoint[]> => {
-    const response = await fetch("/api/endpoints/")
+    const response = await apiFetch("/api/endpoints/")
     if (!response.ok) {
       throw new Error(await readError(response, "Failed to load endpoints"))
     }
@@ -113,10 +102,9 @@ export const fetchEndpoints = createAsyncThunk(
 export const createEndpoint = createAsyncThunk(
   "endpoints/create",
   async (payload: EndpointInput): Promise<MonitoredEndpoint> => {
-    const response = await fetch("/api/endpoints/", {
+    const response = await apiFetch("/api/endpoints/", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      json: payload,
     })
     if (!response.ok) {
       throw new Error(await readError(response, "Failed to create endpoint"))
@@ -134,10 +122,9 @@ export const updateEndpoint = createAsyncThunk(
     id: number
     payload: EndpointInput
   }): Promise<MonitoredEndpoint> => {
-    const response = await fetch(`/api/endpoints/${id}/`, {
+    const response = await apiFetch(`/api/endpoints/${id}/`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      json: payload,
     })
     if (!response.ok) {
       throw new Error(await readError(response, "Failed to update endpoint"))
@@ -149,7 +136,7 @@ export const updateEndpoint = createAsyncThunk(
 export const deleteEndpoint = createAsyncThunk(
   "endpoints/delete",
   async (endpointId: number): Promise<number> => {
-    const response = await fetch(`/api/endpoints/${endpointId}/`, {
+    const response = await apiFetch(`/api/endpoints/${endpointId}/`, {
       method: "DELETE",
     })
     if (!response.ok) {
@@ -162,7 +149,7 @@ export const deleteEndpoint = createAsyncThunk(
 export const checkEndpoint = createAsyncThunk(
   "endpoints/check",
   async (endpointId: number): Promise<{ endpointId: number; result: HealthCheckResult }> => {
-    const response = await fetch(`/api/endpoints/${endpointId}/check/`, {
+    const response = await apiFetch(`/api/endpoints/${endpointId}/check/`, {
       method: "POST",
     })
     if (!response.ok) {
@@ -176,7 +163,7 @@ export const checkEndpoint = createAsyncThunk(
 export const checkDueEndpoints = createAsyncThunk(
   "endpoints/checkDue",
   async (): Promise<{ checked: number; results: HealthCheckResult[] }> => {
-    const response = await fetch("/api/endpoints/check-due/", {
+    const response = await apiFetch("/api/endpoints/check-due/", {
       method: "POST",
     })
     if (!response.ok) {
@@ -189,7 +176,7 @@ export const checkDueEndpoints = createAsyncThunk(
 export const fetchEndpointHistory = createAsyncThunk(
   "endpoints/fetchHistory",
   async (endpointId: number): Promise<{ endpointId: number; items: HealthCheckResult[] }> => {
-    const response = await fetch(`/api/endpoints/${endpointId}/checks/`)
+    const response = await apiFetch(`/api/endpoints/${endpointId}/checks/`)
     if (!response.ok) {
       throw new Error(await readError(response, "Failed to load history"))
     }
@@ -201,7 +188,7 @@ export const fetchEndpointHistory = createAsyncThunk(
 export const fetchEndpointAlerts = createAsyncThunk(
   "endpoints/fetchAlerts",
   async (endpointId: number): Promise<{ endpointId: number; items: AlertEvent[] }> => {
-    const response = await fetch(`/api/endpoints/${endpointId}/alerts/`)
+    const response = await apiFetch(`/api/endpoints/${endpointId}/alerts/`)
     if (!response.ok) {
       throw new Error(await readError(response, "Failed to load alerts"))
     }
@@ -213,7 +200,7 @@ export const fetchEndpointAlerts = createAsyncThunk(
 export const testEndpointWebhook = createAsyncThunk(
   "endpoints/testWebhook",
   async (endpointId: number): Promise<{ endpointId: number; success: boolean }> => {
-    const response = await fetch(`/api/endpoints/${endpointId}/test-webhook/`, {
+    const response = await apiFetch(`/api/endpoints/${endpointId}/test-webhook/`, {
       method: "POST",
     })
     const body = await response.json().catch(() => ({}))
@@ -221,7 +208,7 @@ export const testEndpointWebhook = createAsyncThunk(
       throw new Error(
         typeof body.detail === "string"
           ? body.detail
-          : await readError(response, "Webhook test failed"),
+          : `Webhook test failed (${response.status})`,
       )
     }
     return { endpointId, success: Boolean(body.success) }

@@ -1,11 +1,13 @@
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from monitoring.alerts import build_alert_payload, deliver_webhook
+from monitoring.dashboard import build_dashboard
 from monitoring.models import AlertEvent, HealthCheckResult, MonitoredEndpoint
 from monitoring.serializers import (
     AlertEventSerializer,
@@ -19,7 +21,7 @@ class HealthView(APIView):
     """Liveness endpoint for Apollo itself."""
 
     authentication_classes = []
-    permission_classes = []
+    permission_classes = [AllowAny]
 
     def get(self, request: Request) -> Response:
         return Response(
@@ -29,6 +31,17 @@ class HealthView(APIView):
                 "timestamp": timezone.now().isoformat(),
             }
         )
+
+
+class DashboardView(APIView):
+    """Aggregated uptime and operational metrics."""
+
+    def get(self, request: Request) -> Response:
+        try:
+            hours = int(request.query_params.get("hours", 24))
+        except (TypeError, ValueError):
+            hours = 24
+        return Response(build_dashboard(hours=hours))
 
 
 class MonitoredEndpointViewSet(viewsets.ModelViewSet):

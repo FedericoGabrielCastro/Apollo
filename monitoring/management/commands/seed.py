@@ -1,4 +1,7 @@
+from django.conf import settings
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
+from rest_framework.authtoken.models import Token
 
 from monitoring.factories import MonitoredEndpointFactory
 from monitoring.models import MonitoredEndpoint
@@ -27,7 +30,7 @@ SEED_ENDPOINTS = [
 
 
 class Command(BaseCommand):
-    help = "Seed the database with sample monitored endpoints."
+    help = "Seed demo user, token, and sample monitored endpoints."
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(
@@ -43,26 +46,47 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options) -> None:
+        username = settings.APOLLO_DEMO_USERNAME
+        password = settings.APOLLO_DEMO_PASSWORD
+        user, created = User.objects.get_or_create(
+            username=username,
+            defaults={"is_staff": True, "is_superuser": True},
+        )
+        if created:
+            user.set_password(password)
+            user.save()
+            self.stdout.write(self.style.SUCCESS(f"Created demo user `{username}`."))
+        else:
+            self.stdout.write(f"Demo user `{username}` already exists.")
+
+        token, _ = Token.objects.get_or_create(user=user)
+        self.stdout.write(self.style.SUCCESS(f"API token: {token.key}"))
+
         if options["flush"]:
             deleted, _ = MonitoredEndpoint.objects.all().delete()
             self.stdout.write(self.style.WARNING(f"Deleted {deleted} endpoint(s)."))
 
-        created = []
+        created_endpoints = []
         for payload in SEED_ENDPOINTS:
             endpoint, was_created = MonitoredEndpoint.objects.get_or_create(
                 name=payload["name"],
                 defaults=payload,
             )
             if was_created:
-                created.append(endpoint)
+                created_endpoints.append(endpoint)
 
         extra = options["count"]
         if extra:
-            created.extend(MonitoredEndpointFactory.create_batch(extra))
+            created_endpoints.extend(MonitoredEndpointFactory.create_batch(extra))
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Seeded {len(created)} new endpoint(s) "
+                f"Seeded {len(created_endpoints)} new endpoint(s) "
                 f"({MonitoredEndpoint.objects.count()} total)."
+            )
+        )
+        self.stdout.write(
+            self.style.NOTICE(
+                f"Login with username=`{username}` password=`{password}`."
             )
         )

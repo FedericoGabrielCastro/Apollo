@@ -21,11 +21,10 @@ def test_health_endpoint() -> None:
 
 
 @pytest.mark.django_db
-def test_list_endpoints() -> None:
+def test_list_endpoints(api_client) -> None:
     MonitoredEndpointFactory.create_batch(3)
-    client = APIClient()
 
-    response = client.get("/api/endpoints/")
+    response = api_client.get("/api/endpoints/")
 
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data) == 3
@@ -33,10 +32,14 @@ def test_list_endpoints() -> None:
 
 @pytest.mark.django_db
 def test_seed_command() -> None:
+    from django.contrib.auth.models import User
     from django.core.management import call_command
+    from rest_framework.authtoken.models import Token
 
     call_command("seed")
     assert MonitoredEndpoint.objects.filter(name="Apollo self").exists()
+    assert User.objects.filter(username="apollo").exists()
+    assert Token.objects.filter(user__username="apollo").exists()
 
     call_command("seed", flush=True, count=1)
     assert MonitoredEndpoint.objects.count() == 4  # 3 curated + 1 factory
@@ -62,7 +65,7 @@ def test_run_health_check_persists_result(mock_probe: MagicMock) -> None:
 
 @pytest.mark.django_db
 @patch("monitoring.views.run_health_check")
-def test_check_endpoint_action(mock_run: MagicMock) -> None:
+def test_check_endpoint_action(mock_run: MagicMock, api_client) -> None:
     endpoint = MonitoredEndpointFactory()
     mock_run.return_value = HealthCheckResultFactory(
         endpoint=endpoint,
@@ -71,8 +74,7 @@ def test_check_endpoint_action(mock_run: MagicMock) -> None:
         latency_ms=10.0,
     )
 
-    client = APIClient()
-    response = client.post(f"/api/endpoints/{endpoint.id}/check/")
+    response = api_client.post(f"/api/endpoints/{endpoint.id}/check/")
 
     assert response.status_code == status.HTTP_201_CREATED
     assert response.data["status"] == "up"
@@ -80,7 +82,7 @@ def test_check_endpoint_action(mock_run: MagicMock) -> None:
 
 
 @pytest.mark.django_db
-def test_endpoint_includes_last_check() -> None:
+def test_endpoint_includes_last_check(api_client) -> None:
     endpoint = MonitoredEndpointFactory()
     HealthCheckResultFactory(
         endpoint=endpoint,
@@ -88,8 +90,7 @@ def test_endpoint_includes_last_check() -> None:
         status_code=500,
     )
 
-    client = APIClient()
-    response = client.get(f"/api/endpoints/{endpoint.id}/")
+    response = api_client.get(f"/api/endpoints/{endpoint.id}/")
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["last_check"]["status"] == "down"
@@ -116,9 +117,8 @@ def test_check_endpoints_command(mock_probe: MagicMock) -> None:
 
 
 @pytest.mark.django_db
-def test_create_endpoint() -> None:
-    client = APIClient()
-    response = client.post(
+def test_create_endpoint(api_client) -> None:
+    response = api_client.post(
         "/api/endpoints/",
         {
             "name": "Payments",
@@ -137,11 +137,10 @@ def test_create_endpoint() -> None:
 
 
 @pytest.mark.django_db
-def test_update_endpoint() -> None:
+def test_update_endpoint(api_client) -> None:
     endpoint = MonitoredEndpointFactory(name="Old")
-    client = APIClient()
 
-    response = client.put(
+    response = api_client.put(
         f"/api/endpoints/{endpoint.id}/",
         {
             "name": "New",
@@ -169,20 +168,18 @@ def test_update_endpoint() -> None:
 
 
 @pytest.mark.django_db
-def test_delete_endpoint() -> None:
+def test_delete_endpoint(api_client) -> None:
     endpoint = MonitoredEndpointFactory()
-    client = APIClient()
 
-    response = client.delete(f"/api/endpoints/{endpoint.id}/")
+    response = api_client.delete(f"/api/endpoints/{endpoint.id}/")
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
     assert not MonitoredEndpoint.objects.filter(id=endpoint.id).exists()
 
 
 @pytest.mark.django_db
-def test_create_endpoint_rejects_invalid_method() -> None:
-    client = APIClient()
-    response = client.post(
+def test_create_endpoint_rejects_invalid_method(api_client) -> None:
+    response = api_client.post(
         "/api/endpoints/",
         {
             "name": "Bad",
@@ -199,11 +196,10 @@ def test_create_endpoint_rejects_invalid_method() -> None:
 
 
 @pytest.mark.django_db
-def test_endpoint_is_due_when_never_checked() -> None:
+def test_endpoint_is_due_when_never_checked(api_client) -> None:
     endpoint = MonitoredEndpointFactory(check_interval_minutes=5)
-    client = APIClient()
 
-    response = client.get(f"/api/endpoints/{endpoint.id}/")
+    response = api_client.get(f"/api/endpoints/{endpoint.id}/")
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["is_due"] is True
@@ -211,12 +207,11 @@ def test_endpoint_is_due_when_never_checked() -> None:
 
 
 @pytest.mark.django_db
-def test_endpoint_not_due_right_after_check() -> None:
+def test_endpoint_not_due_right_after_check(api_client) -> None:
     endpoint = MonitoredEndpointFactory(check_interval_minutes=60)
     HealthCheckResultFactory(endpoint=endpoint)
-    client = APIClient()
 
-    response = client.get(f"/api/endpoints/{endpoint.id}/")
+    response = api_client.get(f"/api/endpoints/{endpoint.id}/")
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["is_due"] is False
@@ -224,7 +219,7 @@ def test_endpoint_not_due_right_after_check() -> None:
 
 @pytest.mark.django_db
 @patch("monitoring.views.run_due_checks")
-def test_check_due_action(mock_run_due: MagicMock) -> None:
+def test_check_due_action(mock_run_due: MagicMock, api_client) -> None:
     endpoint = MonitoredEndpointFactory()
     mock_run_due.return_value = [
         HealthCheckResultFactory(
@@ -234,9 +229,8 @@ def test_check_due_action(mock_run_due: MagicMock) -> None:
             latency_ms=4.0,
         )
     ]
-    client = APIClient()
 
-    response = client.post("/api/endpoints/check-due/")
+    response = api_client.post("/api/endpoints/check-due/")
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["checked"] == 1
@@ -266,7 +260,7 @@ def test_check_endpoints_due_skips_fresh(mock_probe: MagicMock) -> None:
 
 
 @pytest.mark.django_db
-def test_list_endpoint_checks() -> None:
+def test_list_endpoint_checks(api_client) -> None:
     endpoint = MonitoredEndpointFactory()
     older = HealthCheckResultFactory(
         endpoint=endpoint,
@@ -281,8 +275,7 @@ def test_list_endpoint_checks() -> None:
     other = MonitoredEndpointFactory()
     HealthCheckResultFactory(endpoint=other)
 
-    client = APIClient()
-    response = client.get(f"/api/endpoints/{endpoint.id}/checks/")
+    response = api_client.get(f"/api/endpoints/{endpoint.id}/checks/")
 
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data) == 2
@@ -413,7 +406,7 @@ def test_alerts_disabled_skips_webhook(
 
 
 @pytest.mark.django_db
-def test_list_endpoint_alerts() -> None:
+def test_list_endpoint_alerts(api_client) -> None:
     from monitoring.factories import AlertEventFactory
 
     endpoint = MonitoredEndpointFactory()
@@ -422,8 +415,7 @@ def test_list_endpoint_alerts() -> None:
     other = MonitoredEndpointFactory()
     AlertEventFactory(endpoint=other)
 
-    client = APIClient()
-    response = client.get(f"/api/endpoints/{endpoint.id}/alerts/")
+    response = api_client.get(f"/api/endpoints/{endpoint.id}/alerts/")
 
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data) == 2
@@ -433,27 +425,83 @@ def test_list_endpoint_alerts() -> None:
 
 
 @pytest.mark.django_db
-def test_test_webhook_requires_url() -> None:
+def test_test_webhook_requires_url(api_client) -> None:
     endpoint = MonitoredEndpointFactory(webhook_url="")
-    client = APIClient()
 
-    response = client.post(f"/api/endpoints/{endpoint.id}/test-webhook/")
+    response = api_client.post(f"/api/endpoints/{endpoint.id}/test-webhook/")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.django_db
 @patch("monitoring.views.deliver_webhook")
-def test_test_webhook_action(mock_deliver: MagicMock) -> None:
+def test_test_webhook_action(mock_deliver: MagicMock, api_client) -> None:
     endpoint = MonitoredEndpointFactory(
         webhook_url="https://hooks.example.com/apollo",
     )
     HealthCheckResultFactory(endpoint=endpoint)
     mock_deliver.return_value = (True, 200, "")
-    client = APIClient()
 
-    response = client.post(f"/api/endpoints/{endpoint.id}/test-webhook/")
+    response = api_client.post(f"/api/endpoints/{endpoint.id}/test-webhook/")
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["success"] is True
     mock_deliver.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_endpoints_require_auth(anon_client) -> None:
+    response = anon_client.get("/api/endpoints/")
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+def test_login_and_me(anon_client, user) -> None:
+    response = anon_client.post(
+        "/api/auth/login/",
+        {"username": "tester", "password": "secret123"},
+        format="json",
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert "token" in response.data
+
+    anon_client.credentials(HTTP_AUTHORIZATION=f"Token {response.data['token']}")
+    me = anon_client.get("/api/auth/me/")
+    assert me.status_code == status.HTTP_200_OK
+    assert me.data["username"] == "tester"
+
+
+@pytest.mark.django_db
+def test_login_rejects_bad_credentials(anon_client, user) -> None:
+    response = anon_client.post(
+        "/api/auth/login/",
+        {"username": "tester", "password": "wrong"},
+        format="json",
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_logout_deletes_token(api_client, user) -> None:
+    from rest_framework.authtoken.models import Token
+
+    assert Token.objects.filter(user=user).exists()
+    response = api_client.post("/api/auth/logout/")
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert not Token.objects.filter(user=user).exists()
+
+
+@pytest.mark.django_db
+def test_dashboard_metrics(api_client) -> None:
+    endpoint = MonitoredEndpointFactory(name="Alpha")
+    HealthCheckResultFactory(endpoint=endpoint, status=HealthCheckResult.Status.UP, latency_ms=10)
+    HealthCheckResultFactory(endpoint=endpoint, status=HealthCheckResult.Status.DOWN, latency_ms=20)
+
+    response = api_client.get("/api/dashboard/?hours=24")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["summary"]["checks_total"] == 2
+    assert response.data["summary"]["checks_up"] == 1
+    assert response.data["summary"]["uptime_percent"] == 50.0
+    assert response.data["endpoints"][0]["name"] == "Alpha"
+    assert response.data["endpoints"][0]["uptime_percent"] == 50.0
