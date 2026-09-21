@@ -81,4 +81,6 @@ jobs:
         run: docker build -t apollo:ci .
 
       - name: Validate compose file
-        run: docker compose config -q
+        run: |
+          cp .env.example .env
+          docker compose config -q
