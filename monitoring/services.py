@@ -102,6 +102,26 @@ def evaluate_response_assertions(
     return None
 
 
+def build_probe_request(endpoint: MonitoredEndpoint) -> tuple[dict[str, str], tuple[str, str] | None]:
+    """Build headers and optional basic-auth tuple for an endpoint probe."""
+    headers: dict[str, str] = {}
+    raw_headers = endpoint.request_headers or {}
+    if isinstance(raw_headers, dict):
+        for key, value in raw_headers.items():
+            if key is None or value is None:
+                continue
+            headers[str(key)] = str(value)
+
+    auth: tuple[str, str] | None = None
+    auth_type = (endpoint.auth_type or "none").lower()
+    if auth_type == "bearer" and endpoint.auth_secret:
+        headers["Authorization"] = f"Bearer {endpoint.auth_secret}"
+    elif auth_type == "basic" and endpoint.auth_username:
+        auth = (endpoint.auth_username, endpoint.auth_secret or "")
+
+    return headers, auth
+
+
 def probe_endpoint(endpoint: MonitoredEndpoint) -> CheckOutcome:
     """Perform an HTTP request (plus optional SSL check) and classify the result."""
     ssl_error = check_ssl_certificate(endpoint)
@@ -114,10 +134,19 @@ def probe_endpoint(endpoint: MonitoredEndpoint) -> CheckOutcome:
         )
 
     started = time.perf_counter()
+    headers, auth = build_probe_request(endpoint)
 
     try:
-        with httpx.Client(timeout=endpoint.timeout_seconds, follow_redirects=True) as client:
-            response = client.request(endpoint.method.upper(), endpoint.url)
+        with httpx.Client(
+            timeout=endpoint.timeout_seconds,
+            follow_redirects=True,
+            auth=auth,
+        ) as client:
+            response = client.request(
+                endpoint.method.upper(),
+                endpoint.url,
+                headers=headers,
+            )
         latency_ms = (time.perf_counter() - started) * 1000
         assertion_error = evaluate_response_assertions(
             endpoint,

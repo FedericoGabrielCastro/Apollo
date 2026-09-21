@@ -8,12 +8,13 @@ from rest_framework.views import APIView
 
 from monitoring.alerts import build_alert_payload, deliver_webhook
 from monitoring.dashboard import build_dashboard
-from monitoring.models import AlertEvent, HealthCheckResult, Incident, MonitoredEndpoint, Tag
+from monitoring.models import AlertEvent, HealthCheckResult, Incident, MonitoredEndpoint, StatusPageConfig, Tag
 from monitoring.serializers import (
     AlertEventSerializer,
     HealthCheckResultSerializer,
     IncidentSerializer,
     MonitoredEndpointSerializer,
+    StatusPageConfigSerializer,
     TagSerializer,
 )
 from monitoring.services import run_due_checks, run_health_check
@@ -44,6 +45,24 @@ class PublicStatusView(APIView):
 
     def get(self, request: Request) -> Response:
         return Response(build_public_status())
+
+
+class StatusPageConfigView(APIView):
+    """Read/update branding for the public status page."""
+
+    def get(self, request: Request) -> Response:
+        config = StatusPageConfig.get_solo()
+        return Response(StatusPageConfigSerializer(config).data)
+
+    def patch(self, request: Request) -> Response:
+        config = StatusPageConfig.get_solo()
+        serializer = StatusPageConfigSerializer(config, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def put(self, request: Request) -> Response:
+        return self.patch(request)
 
 
 class DashboardView(APIView):

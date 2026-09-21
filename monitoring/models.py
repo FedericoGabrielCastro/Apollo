@@ -66,6 +66,38 @@ class MonitoredEndpoint(models.Model):
         blank=True,
         help_text="While set and in the future, skip webhook/email (incidents still sync).",
     )
+    request_headers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Optional HTTP headers sent with each probe (string map).",
+    )
+    auth_type = models.CharField(
+        max_length=16,
+        choices=[
+            ("none", "None"),
+            ("bearer", "Bearer token"),
+            ("basic", "Basic auth"),
+        ],
+        default="none",
+    )
+    auth_username = models.CharField(max_length=120, blank=True)
+    auth_secret = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Bearer token, or basic-auth password.",
+    )
+    failure_threshold = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="Consecutive failures required before alerting and opening an incident.",
+    )
+    discord_webhook_url = models.URLField(
+        blank=True,
+        help_text="Optional Discord webhook for failure/recovery alerts.",
+    )
+    slack_webhook_url = models.URLField(
+        blank=True,
+        help_text="Optional Slack incoming webhook for failure/recovery alerts.",
+    )
     tags = models.ManyToManyField(Tag, blank=True, related_name="endpoints")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -113,6 +145,8 @@ class AlertEvent(models.Model):
     class Channel(models.TextChoices):
         WEBHOOK = "webhook", "Webhook"
         EMAIL = "email", "Email"
+        DISCORD = "discord", "Discord"
+        SLACK = "slack", "Slack"
 
     endpoint = models.ForeignKey(
         MonitoredEndpoint,
@@ -184,3 +218,32 @@ class Incident(models.Model):
 
     def __str__(self) -> str:
         return f"{self.endpoint.name}: {self.status} ({self.summary})"
+
+
+class StatusPageConfig(models.Model):
+    """Singleton branding settings for the public status page."""
+
+    title = models.CharField(max_length=120, default="Apollo Status")
+    subtitle = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Live health for publicly listed endpoints.",
+    )
+    support_url = models.URLField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Status page config"
+        verbose_name_plural = "Status page config"
+
+    def __str__(self) -> str:
+        return self.title
+
+    def save(self, *args, **kwargs) -> None:
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_solo(cls) -> "StatusPageConfig":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

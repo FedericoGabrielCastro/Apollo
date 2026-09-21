@@ -4,11 +4,12 @@ from typing import Any
 
 from django.utils import timezone
 
-from monitoring.models import HealthCheckResult, Incident, MonitoredEndpoint
+from monitoring.models import HealthCheckResult, Incident, MonitoredEndpoint, StatusPageConfig
 
 
 def build_public_status() -> dict[str, Any]:
     """Public status payload for unauthenticated status page consumers."""
+    config = StatusPageConfig.get_solo()
     endpoints = list(
         MonitoredEndpoint.objects.filter(is_public=True, is_active=True)
         .prefetch_related("tags")
@@ -55,6 +56,9 @@ def build_public_status() -> dict[str, Any]:
 
     return {
         "service": "apollo",
+        "title": config.title,
+        "subtitle": config.subtitle,
+        "support_url": config.support_url,
         "overall": overall,
         "generated_at": timezone.now().isoformat(),
         "endpoints": rows,

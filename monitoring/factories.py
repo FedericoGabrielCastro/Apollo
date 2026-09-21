@@ -36,6 +36,13 @@ class MonitoredEndpointFactory(factory.django.DjangoModelFactory):
     check_ssl_expiry = False
     ssl_warn_days = 14
     mute_alerts_until = None
+    request_headers = factory.LazyFunction(dict)
+    auth_type = "none"
+    auth_username = ""
+    auth_secret = ""
+    failure_threshold = 1
+    discord_webhook_url = ""
+    slack_webhook_url = ""
 
 
 class HealthCheckResultFactory(factory.django.DjangoModelFactory):

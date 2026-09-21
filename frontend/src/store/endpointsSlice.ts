@@ -17,7 +17,7 @@ export type AlertEvent = {
   endpoint: number
   check_result: number
   event_type: "failure" | "recovery"
-  channel: "webhook" | "email"
+  channel: "webhook" | "email" | "discord" | "slack"
   target: string
   payload: Record<string, unknown>
   success: boolean
@@ -54,6 +54,13 @@ export type MonitoredEndpoint = {
   check_ssl_expiry: boolean
   ssl_warn_days: number
   mute_alerts_until: string | null
+  request_headers: Record<string, string>
+  auth_type: "none" | "bearer" | "basic"
+  auth_username: string
+  auth_secret: string
+  failure_threshold: number
+  discord_webhook_url: string
+  slack_webhook_url: string
   tags: string[]
   created_at: string
   updated_at: string
@@ -80,6 +87,13 @@ export type EndpointInput = {
   check_ssl_expiry: boolean
   ssl_warn_days: number
   mute_alerts_until: string | null
+  request_headers: Record<string, string>
+  auth_type: "none" | "bearer" | "basic"
+  auth_username: string
+  auth_secret: string
+  failure_threshold: number
+  discord_webhook_url: string
+  slack_webhook_url: string
   tags: string[]
 }
 

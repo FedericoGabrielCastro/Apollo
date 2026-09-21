@@ -1,12 +1,17 @@
 from django.contrib import admin
 
-from monitoring.models import AlertEvent, HealthCheckResult, Incident, MonitoredEndpoint, Tag
+from monitoring.models import AlertEvent, HealthCheckResult, Incident, MonitoredEndpoint, StatusPageConfig, Tag
 
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
     list_display = ("name", "created_at")
     search_fields = ("name",)
+
+
+@admin.register(StatusPageConfig)
+class StatusPageConfigAdmin(admin.ModelAdmin):
+    list_display = ("title", "support_url", "updated_at")
 
 
 @admin.register(MonitoredEndpoint)
@@ -18,8 +23,8 @@ class MonitoredEndpointAdmin(admin.ModelAdmin):
         "expected_status",
         "is_active",
         "is_public",
-        "timeout_seconds",
-        "check_interval_minutes",
+        "failure_threshold",
+        "auth_type",
         "alert_on_failure",
         "check_ssl_expiry",
         "mute_alerts_until",
@@ -30,11 +35,12 @@ class MonitoredEndpointAdmin(admin.ModelAdmin):
         "is_active",
         "is_public",
         "method",
+        "auth_type",
         "alert_on_failure",
         "check_ssl_expiry",
         "tags",
     )
-    search_fields = ("name", "url", "webhook_url", "alert_email")
+    search_fields = ("name", "url", "webhook_url", "alert_email", "discord_webhook_url", "slack_webhook_url")
     filter_horizontal = ("tags",)
 
 

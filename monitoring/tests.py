@@ -294,11 +294,26 @@ def test_resolve_alert_transitions() -> None:
     from monitoring.alerts import resolve_alert_event_type
     from monitoring.models import AlertEvent
 
-    assert resolve_alert_event_type(None, "down") == AlertEvent.EventType.FAILURE
-    assert resolve_alert_event_type("up", "error") == AlertEvent.EventType.FAILURE
-    assert resolve_alert_event_type("down", "down") is None
-    assert resolve_alert_event_type("error", "up") == AlertEvent.EventType.RECOVERY
-    assert resolve_alert_event_type("up", "up") is None
+    endpoint = MonitoredEndpointFactory(failure_threshold=1)
+    first = HealthCheckResultFactory(
+        endpoint=endpoint, status=HealthCheckResult.Status.DOWN, status_code=500
+    )
+    assert (
+        resolve_alert_event_type(endpoint, first, None) == AlertEvent.EventType.FAILURE
+    )
+
+    second = HealthCheckResultFactory(
+        endpoint=endpoint, status=HealthCheckResult.Status.DOWN, status_code=500
+    )
+    assert resolve_alert_event_type(endpoint, second, "down") is None
+
+    recovery = HealthCheckResultFactory(
+        endpoint=endpoint, status=HealthCheckResult.Status.UP, status_code=200
+    )
+    assert (
+        resolve_alert_event_type(endpoint, recovery, "down")
+        == AlertEvent.EventType.RECOVERY
+    )
 
 
 @pytest.mark.django_db
@@ -736,3 +751,116 @@ def test_create_endpoint_with_assertions(api_client) -> None:
     assert response.data["max_latency_ms"] == 500
     assert response.data["check_ssl_expiry"] is True
     assert response.data["ssl_warn_days"] == 7
+
+
+@pytest.mark.django_db
+@patch("monitoring.alerts.deliver_webhook")
+@patch("monitoring.services.probe_endpoint")
+def test_failure_threshold_delays_alert(
+    mock_probe: MagicMock,
+    mock_deliver: MagicMock,
+) -> None:
+    from monitoring.models import AlertEvent, Incident
+    from monitoring.services import CheckOutcome, run_health_check
+
+    endpoint = MonitoredEndpointFactory(
+        webhook_url="https://hooks.example.com/apollo",
+        failure_threshold=2,
+    )
+    mock_probe.return_value = CheckOutcome(
+        status=HealthCheckResult.Status.DOWN,
+        status_code=500,
+        latency_ms=10.0,
+        error_message="boom",
+    )
+    mock_deliver.return_value = (True, 200, "")
+
+    run_health_check(endpoint)
+    assert AlertEvent.objects.count() == 0
+    assert Incident.objects.count() == 0
+
+    run_health_check(endpoint)
+    assert AlertEvent.objects.count() == 1
+    assert Incident.objects.filter(status=Incident.Status.OPEN).count() == 1
+    mock_deliver.assert_called_once()
+
+
+@pytest.mark.django_db
+@patch("monitoring.alerts.deliver_discord")
+@patch("monitoring.services.probe_endpoint")
+def test_discord_alert_channel(
+    mock_probe: MagicMock,
+    mock_discord: MagicMock,
+) -> None:
+    from monitoring.models import AlertEvent
+    from monitoring.services import CheckOutcome, run_health_check
+
+    endpoint = MonitoredEndpointFactory(
+        discord_webhook_url="https://discord.com/api/webhooks/1/abc",
+    )
+    mock_probe.return_value = CheckOutcome(
+        status=HealthCheckResult.Status.DOWN,
+        status_code=500,
+        latency_ms=10.0,
+        error_message="boom",
+    )
+    mock_discord.return_value = (True, 204, "")
+
+    run_health_check(endpoint)
+
+    assert AlertEvent.objects.filter(channel=AlertEvent.Channel.DISCORD).count() == 1
+    mock_discord.assert_called_once()
+
+
+@pytest.mark.django_db
+@patch("monitoring.services.check_ssl_certificate", return_value=None)
+@patch("httpx.Client")
+def test_probe_sends_bearer_auth(mock_client_cls: MagicMock, _ssl: MagicMock) -> None:
+    from monitoring.services import probe_endpoint
+
+    endpoint = MonitoredEndpointFactory(
+        auth_type="bearer",
+        auth_secret="secret-token",
+        request_headers={"X-Trace": "1"},
+    )
+    response = MagicMock()
+    response.status_code = 200
+    response.text = "ok"
+    request_mock = mock_client_cls.return_value.__enter__.return_value.request
+    request_mock.return_value = response
+
+    probe_endpoint(endpoint)
+
+    kwargs = request_mock.call_args.kwargs
+    assert kwargs["headers"]["Authorization"] == "Bearer secret-token"
+    assert kwargs["headers"]["X-Trace"] == "1"
+
+
+@pytest.mark.django_db
+def test_status_page_config_update(api_client) -> None:
+    response = api_client.patch(
+        "/api/status/config/",
+        {
+            "title": "Acme Status",
+            "subtitle": "Platform health",
+            "support_url": "https://support.example.com",
+        },
+        format="json",
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["title"] == "Acme Status"
+
+    public = api_client.get("/api/status/public/")
+    # public needs anon - but api_client is authenticated which is fine for GET public
+    # Actually PublicStatusView uses AllowAny - api_client can still call it
+    # Wait - api_client is token authenticated. Public status allows any.
+    # But we used api_client for patch - for public use anon. Let's just check via build or re-get.
+
+    from rest_framework.test import APIClient
+
+    anon = APIClient()
+    public = anon.get("/api/status/public/")
+    assert public.status_code == status.HTTP_200_OK
+    assert public.data["title"] == "Acme Status"
+    assert public.data["subtitle"] == "Platform health"
+    assert public.data["support_url"] == "https://support.example.com"

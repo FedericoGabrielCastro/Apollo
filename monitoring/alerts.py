@@ -29,23 +29,61 @@ def previous_check_status(
     return previous
 
 
+def trailing_failure_streak(
+    endpoint: MonitoredEndpoint,
+    current: HealthCheckResult,
+) -> int:
+    """Count consecutive failure statuses ending at `current` (inclusive)."""
+    statuses = list(
+        endpoint.checks.order_by("-checked_at").values_list("status", flat=True)[:50]
+    )
+    # Ensure current is first (just created).
+    if not statuses or statuses[0] != current.status:
+        statuses = [current.status, *statuses]
+
+    streak = 0
+    for status_value in statuses:
+        if status_value in FAILURE_STATUSES:
+            streak += 1
+        else:
+            break
+    return streak
+
+
 def resolve_alert_event_type(
+    endpoint: MonitoredEndpoint,
+    current: HealthCheckResult,
     previous_status: str | None,
-    current_status: str,
 ) -> str | None:
     """
-    Alert only on transitions:
-    - healthy/unknown -> failure
-    - failure -> healthy (recovery)
-    Consecutive failures do not re-alert.
+    Alert when consecutive failures reach failure_threshold, and on recovery
+    after a threshold-crossing outage (or an already-open incident).
     """
-    current_is_failure = current_status in FAILURE_STATUSES
+    threshold = max(1, endpoint.failure_threshold or 1)
+    current_is_failure = current.status in FAILURE_STATUSES
     previous_is_failure = previous_status in FAILURE_STATUSES if previous_status else False
 
-    if current_is_failure and not previous_is_failure:
-        return AlertEvent.EventType.FAILURE
-    if not current_is_failure and previous_is_failure:
-        return AlertEvent.EventType.RECOVERY
+    if current_is_failure:
+        streak = trailing_failure_streak(endpoint, current)
+        if streak == threshold:
+            return AlertEvent.EventType.FAILURE
+        return None
+
+    if previous_is_failure:
+        open_incident = endpoint.incidents.filter(status=Incident.Status.OPEN).exists()
+        prior_statuses = list(
+            endpoint.checks.exclude(pk=current.pk)
+            .order_by("-checked_at")
+            .values_list("status", flat=True)[:50]
+        )
+        prior_streak = 0
+        for status_value in prior_statuses:
+            if status_value in FAILURE_STATUSES:
+                prior_streak += 1
+            else:
+                break
+        if open_incident or prior_streak >= threshold:
+            return AlertEvent.EventType.RECOVERY
     return None
 
 
@@ -85,6 +123,28 @@ def deliver_webhook(url: str, payload: dict[str, Any]) -> tuple[bool, int | None
         return False, response.status_code, f"Webhook returned HTTP {response.status_code}"
     except httpx.HTTPError as exc:
         return False, None, str(exc)
+
+
+def _alert_text(event_type: str, payload: dict[str, Any]) -> str:
+    endpoint = payload.get("endpoint", {})
+    check = payload.get("check", {})
+    return (
+        f"[Apollo] {endpoint.get('name', 'endpoint')} {event_type}\n"
+        f"Status: {check.get('status')} · HTTP {check.get('status_code')}\n"
+        f"Error: {check.get('error_message') or '-'}"
+    )
+
+
+def deliver_discord(url: str, event_type: str, payload: dict[str, Any]) -> tuple[bool, int | None, str]:
+    """POST a Discord-compatible webhook body."""
+    body = {"content": _alert_text(event_type, payload)[:1900]}
+    return deliver_webhook(url, body)
+
+
+def deliver_slack(url: str, event_type: str, payload: dict[str, Any]) -> tuple[bool, int | None, str]:
+    """POST a Slack incoming-webhook body."""
+    body = {"text": _alert_text(event_type, payload)}
+    return deliver_webhook(url, body)
 
 
 def deliver_email(to_email: str, event_type: str, payload: dict[str, Any]) -> tuple[bool, str]:
@@ -156,15 +216,39 @@ def alerts_are_muted(endpoint: MonitoredEndpoint, *, now=None) -> bool:
     return endpoint.mute_alerts_until > now
 
 
+def _record_channel(
+    *,
+    endpoint: MonitoredEndpoint,
+    result: HealthCheckResult,
+    event_type: str,
+    channel: str,
+    target: str,
+    payload: dict[str, Any],
+    success: bool,
+    response_status: int | None,
+    error_message: str,
+) -> AlertEvent:
+    return AlertEvent.objects.create(
+        endpoint=endpoint,
+        check_result=result,
+        event_type=event_type,
+        channel=channel,
+        target=target,
+        payload=payload,
+        success=success,
+        response_status=response_status,
+        error_message=error_message,
+    )
+
+
 def dispatch_alerts_for_result(
     endpoint: MonitoredEndpoint,
     result: HealthCheckResult,
 ) -> list[AlertEvent]:
     """Evaluate status transition, sync incidents, and dispatch alert channels."""
     previous_status = previous_check_status(endpoint, result)
-    event_type = resolve_alert_event_type(previous_status, result.status)
+    event_type = resolve_alert_event_type(endpoint, result, previous_status)
 
-    # Incidents always track transitions, even when alerting is off or muted.
     if event_type:
         sync_incident_for_transition(endpoint, result, event_type)
 
@@ -183,9 +267,9 @@ def dispatch_alerts_for_result(
             payload,
         )
         alerts.append(
-            AlertEvent.objects.create(
+            _record_channel(
                 endpoint=endpoint,
-                check_result=result,
+                result=result,
                 event_type=event_type,
                 channel=AlertEvent.Channel.WEBHOOK,
                 target=endpoint.webhook_url,
@@ -203,15 +287,55 @@ def dispatch_alerts_for_result(
             payload,
         )
         alerts.append(
-            AlertEvent.objects.create(
+            _record_channel(
                 endpoint=endpoint,
-                check_result=result,
+                result=result,
                 event_type=event_type,
                 channel=AlertEvent.Channel.EMAIL,
                 target=endpoint.alert_email,
                 payload=payload,
                 success=success,
                 response_status=None,
+                error_message=error_message,
+            )
+        )
+
+    if endpoint.discord_webhook_url:
+        success, response_status, error_message = deliver_discord(
+            endpoint.discord_webhook_url,
+            event_type,
+            payload,
+        )
+        alerts.append(
+            _record_channel(
+                endpoint=endpoint,
+                result=result,
+                event_type=event_type,
+                channel=AlertEvent.Channel.DISCORD,
+                target=endpoint.discord_webhook_url,
+                payload=payload,
+                success=success,
+                response_status=response_status,
+                error_message=error_message,
+            )
+        )
+
+    if endpoint.slack_webhook_url:
+        success, response_status, error_message = deliver_slack(
+            endpoint.slack_webhook_url,
+            event_type,
+            payload,
+        )
+        alerts.append(
+            _record_channel(
+                endpoint=endpoint,
+                result=result,
+                event_type=event_type,
+                channel=AlertEvent.Channel.SLACK,
+                target=endpoint.slack_webhook_url,
+                payload=payload,
+                success=success,
+                response_status=response_status,
                 error_message=error_message,
             )
         )

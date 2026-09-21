@@ -10,6 +10,7 @@ from monitoring.views import (
     IncidentViewSet,
     MonitoredEndpointViewSet,
     PublicStatusView,
+    StatusPageConfigView,
     TagViewSet,
 )
 
@@ -23,6 +24,7 @@ router.register("tags", TagViewSet, basename="tag")
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
     path("status/public/", PublicStatusView.as_view(), name="public-status"),
+    path("status/config/", StatusPageConfigView.as_view(), name="status-config"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
     path("auth/login/", LoginView.as_view(), name="auth-login"),
     path("auth/logout/", LogoutView.as_view(), name="auth-logout"),

@@ -19,6 +19,9 @@ type PublicIncident = {
 
 type PublicStatus = {
   service: string
+  title: string
+  subtitle: string
+  support_url: string
   overall: "unknown" | "operational" | "degraded" | "major_outage"
   generated_at: string
   endpoints: PublicEndpoint[]
@@ -106,10 +109,18 @@ export function PublicStatusPage() {
             </Link>
           </nav>
         </div>
-        <h1>Public status</h1>
+        <h1>{data?.title?.trim() || "Public status"}</h1>
         <p className="app__lede">
-          Live health for publicly listed endpoints. No authentication required.
+          {data?.subtitle?.trim() ||
+            "Live health for publicly listed endpoints. No authentication required."}
         </p>
+        {data?.support_url?.trim() && (
+          <p className="status-page__meta">
+            <a href={data.support_url} className="status-page__link" target="_blank" rel="noreferrer">
+              Contact support
+            </a>
+          </p>
+        )}
       </header>
 
       {loading && <p>Loading status…</p>}
