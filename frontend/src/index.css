@@ -1,9 +1,31 @@
 :root {
-  color: #1a1f24;
-  background:
-    radial-gradient(circle at top left, #d7e8ef 0%, transparent 45%),
-    linear-gradient(160deg, #f3f6f8 0%, #e4ecef 100%);
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  --ink: #12151a;
+  --ink-soft: #3d4550;
+  --muted: #6b7380;
+  --line: rgba(18, 21, 26, 0.1);
+  --line-strong: rgba(18, 21, 26, 0.18);
+  --surface: rgba(255, 255, 255, 0.55);
+  --surface-strong: rgba(255, 255, 255, 0.78);
+  --accent: #0f766e;
+  --accent-soft: rgba(15, 118, 110, 0.12);
+  --danger: #b42318;
+  --danger-soft: rgba(180, 35, 24, 0.1);
+  --warn: #a15c07;
+  --ok: #0f766e;
+  --radius: 10px;
+  --font-brand: "Syne", "Arial Narrow", sans-serif;
+  --font-ui: "Outfit", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.55) inset;
+
+  color: var(--ink);
+  background-color: #e8eef2;
+  background-image:
+    radial-gradient(ellipse 80% 55% at 8% -10%, rgba(15, 118, 110, 0.14), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 100% 0%, rgba(45, 74, 110, 0.1), transparent 50%),
+    linear-gradient(165deg, #f4f7fa 0%, #e6edf2 48%, #dde7ee 100%);
+  background-attachment: fixed;
+  font-family: var(--font-ui);
   font-synthesis: none;
   line-height: 1.5;
   font-weight: 400;
@@ -21,6 +43,49 @@ body {
   min-height: 100vh;
 }
 
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+  z-index: 0;
+}
+
 #root {
+  position: relative;
+  z-index: 1;
   min-height: 100vh;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes soft-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

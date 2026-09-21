@@ -150,9 +150,9 @@ function AuthenticatedApp() {
             </button>
           </div>
         </div>
-        <h1>API Health Monitor</h1>
+        <h1>API health</h1>
         <p className="app__lede">
-          Authenticated monitoring with uptime metrics, schedules, and webhooks.
+          Uptime, incidents, and alerts — kept quiet until something breaks.
         </p>
       </header>
 
