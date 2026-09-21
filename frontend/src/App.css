@@ -1,0 +1,65 @@
+.app {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 4rem 1.5rem;
+}
+
+.app__header {
+  margin-bottom: 2.5rem;
+}
+
+.app__brand {
+  margin: 0 0 0.75rem;
+  font-family: "IBM Plex Serif", Georgia, serif;
+  font-size: clamp(2.5rem, 6vw, 3.75rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.app__header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+.app__lede {
+  margin: 0;
+  color: #4a5560;
+}
+
+.app__status h2 {
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #5a6670;
+}
+
+.app__status dl {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.app__status dl > div {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 0.75rem;
+}
+
+.app__status dt {
+  margin: 0;
+  color: #5a6670;
+}
+
+.app__status dd {
+  margin: 0;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.95rem;
+}
+
+.app__error {
+  color: #9b2c2c;
+}

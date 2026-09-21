@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "apollo"
+version = "0.1.0"
+description = "Django + React API Health Monitor"
+authors = ["Federico Gabriel Castro"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+django = "^6.1.1"
+djangorestframework = "^3.18.1"
+django-cors-headers = "^4.9.0"
+
+[tool.poetry.group.dev.dependencies]
+factory-boy = "^3.3.3"
+pytest = "^9.1.1"
+pytest-django = "^4.14.0"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
